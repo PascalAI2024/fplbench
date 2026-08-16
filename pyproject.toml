@@ -1,0 +1,22 @@
+[project]
+name = "fplbench"
+version = "0.1.0"
+description = "Leakage-safe Fantasy Premier League panel and live minutes/DefCon models"
+requires-python = ">=3.11"
+dependencies = [
+  "pandas",
+  "pyarrow",
+  "scikit-learn",
+  "lightgbm",
+  "requests",
+  "joblib",
+  "pulp",
+  "matplotlib",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

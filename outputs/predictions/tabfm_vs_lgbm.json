@@ -1,0 +1,55 @@
+{
+  "setup": {
+    "context_rows": 512,
+    "val_rows": 2500,
+    "n_features": 94,
+    "n_estimators": 4,
+    "device": "cuda",
+    "context": "stratified",
+    "model": "google/tabfm-1.0.0-pytorch",
+    "license": "tabfm-non-commercial-v1.0 (research only)"
+  },
+  "tabfm": {
+    "n": 2500,
+    "mae": 1.4115047719955445,
+    "mae_played": 2.3256208648389287,
+    "n_played": 946,
+    "mae_haulers": 4.8054620729664626,
+    "n_haulers": 236,
+    "seconds": 12.28
+  },
+  "lgbm_same_context": {
+    "n": 2500,
+    "mae": 1.4662936557360666,
+    "mae_played": 2.541273201722998,
+    "n_played": 946,
+    "mae_haulers": 4.941796528431805,
+    "n_haulers": 236,
+    "seconds": 1.35
+  },
+  "last5": {
+    "n": 2427,
+    "mae": 1.1072517511330862,
+    "mae_played": 2.420163043478261,
+    "n_played": 920,
+    "mae_haulers": 5.0200000000000005,
+    "n_haulers": 230
+  },
+  "xp_scraped": {
+    "n": 2500,
+    "mae": 1.11464,
+    "mae_played": 2.81553911205074,
+    "n_played": 946,
+    "mae_haulers": 6.687288135593221,
+    "n_haulers": 236
+  },
+  "lgbm_full_data_holdout": {
+    "n": 29757,
+    "mae_model": 0.9799589149735218,
+    "mae_last5": 1.0418822335961635,
+    "mae_xp_scraped": 1.0700574654703094,
+    "mae_minutes": 12.477402582054571,
+    "defcon_auc": 0.8282657350292048,
+    "defcon_logloss": 0.24074203044921386
+  }
+}

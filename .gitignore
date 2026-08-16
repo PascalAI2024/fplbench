@@ -1,0 +1,13 @@
+data/raw/
+data/processed/
+outputs/models/*.joblib
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+*.egg-info/
+.DS_Store
+
+.claude/
+docs/launch/
+outputs/_t*_backup/

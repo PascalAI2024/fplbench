@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fplbench — GW1 pitch</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #030705; color: #e8f6ec; }
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
+    min-height: 100vh;
+  }
+  #board {
+    width: 1280px;
+    height: 800px;
+    box-sizing: border-box;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background:
+      radial-gradient(1200px 500px at 40% -10%, rgba(80,160,90,0.18), transparent 55%),
+      radial-gradient(700px 400px at 100% 100%, rgba(180,70,90,0.12), transparent 50%),
+      #07140d;
+    color: #e8f6ec;
+  }
+  #board * { box-sizing: border-box; }
+  .topbar {
+    height: 72px;
+    flex: 0 0 72px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 0 20px;
+    border-bottom: 1px solid rgba(180, 220, 180, 0.12);
+    background: linear-gradient(180deg, rgba(0,0,0,0.35), transparent);
+  }
+  .brand {
+    letter-spacing: 0.22em;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #9dceaa;
+    min-width: 132px;
+  }
+  .brand b { display: block; color: #f3fff4; letter-spacing: 0.28em; font-size: 13px; }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 92px;
+  }
+  .stat em {
+    font-style: normal;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #7f9a86;
+  }
+  .stat strong { font-size: 16px; font-variant-numeric: tabular-nums; color: #f4ffe8; }
+  .stat.gold strong { color: #f0c14b; }
+  .modes {
+    margin-left: auto;
+    display: flex;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(180,220,180,0.18);
+    border-radius: 999px;
+    padding: 3px;
+  }
+  .modes button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #b7cbb8;
+    font: inherit;
+    font-size: 12px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .modes button[aria-pressed="true"] {
+    background: #dff36a;
+    color: #102008;
+    font-weight: 700;
+  }
+  #board.mode-ungated .modes button[data-mode="ungated"] {
+    background: #ff7a4d;
+    color: #1a0804;
+  }
+  .stage { flex: 1; display: flex; min-height: 0; }
+  .field-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 10px 12px 12px 16px;
+    gap: 8px;
+  }
+  .pitch {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,0.08),
+      0 20px 50px rgba(0,0,0,0.45);
+  }
+  .pitch svg.grass { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #chips { position: absolute; inset: 0; }
+  .story {
+    position: absolute;
+    left: 14px;
+    top: 10px;
+    z-index: 3;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(232,246,236,0.78);
+    text-shadow: 0 1px 8px rgba(0,0,0,0.7);
+    pointer-events: none;
+  }
+  .chip {
+    position: absolute;
+    width: 112px;
+    height: 78px;
+    margin: -39px 0 0 -56px;
+    border: 1px solid rgba(210,255,210,0.16);
+    background: rgba(6, 16, 11, 0.82);
+    color: inherit;
+    border-radius: 12px;
+    cursor: pointer;
+    padding: 7px 8px 6px 34px;
+    text-align: left;
+    font: inherit;
+    transition: left 0.45s ease, top 0.45s ease, background 0.2s, border-color 0.2s, transform 0.15s;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+  }
+  .chip:hover, .chip:focus-visible { transform: translateY(-2px); outline: none; border-color: #dff36a; }
+  .chip.on { border-color: #f0c14b; box-shadow: 0 0 0 1px #f0c14b, 0 10px 24px rgba(0,0,0,0.45); }
+  .chip.swap-in { box-shadow: 0 0 0 1px #7dffc3, 0 8px 18px rgba(0,0,0,0.35); }
+  .chip.swap-out { opacity: 0.72; filter: saturate(0.7); }
+  .chip .nm {
+    display: block;
+    font-size: 12px;
+    font-weight: 650;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .chip .pts {
+    display: block;
+    margin-top: 2px;
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+    color: #b8ffcf;
+  }
+  #board.mode-ungated .chip .pts { color: #ffc29a; }
+  .chip .club {
+    display: block;
+    font-size: 10px;
+    color: #8ea894;
+    letter-spacing: 0.04em;
+  }
+  .ring {
+    position: absolute;
+    left: 6px;
+    top: 14px;
+    width: 26px;
+    height: 26px;
+  }
+  .ring circle { fill: none; stroke-width: 3; }
+  .ring .bg { stroke: rgba(255,255,255,0.12); }
+  .ring .fg {
+    stroke: #7dffc3;
+    transform: rotate(-90deg);
+    transform-origin: 13px 13px;
+  }
+  .pip {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    width: 9px;
+    height: 9px;
+    background: #ff4d8d;
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+    box-shadow: 0 0 8px rgba(255,77,141,0.85);
+  }
+  .arm {
+    display: none;
+    position: absolute;
+    right: 6px;
+    top: 6px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #f0c14b;
+    color: #211600;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 16px;
+    text-align: center;
+  }
+  .chip.cap .arm { display: block; }
+  .dugout {
+    position: relative;
+    height: 118px;
+    flex: 0 0 118px;
+    border-radius: 14px;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0 18px, transparent 18px 36px),
+      linear-gradient(180deg, #14110d, #0c0b09);
+    border: 1px solid rgba(240,193,75,0.18);
+  }
+  .dugout label {
+    position: absolute;
+    left: 12px;
+    top: 8px;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #c8b27a;
+  }
+  #bench-chips { position: absolute; inset: 22px 8px 8px 8px; }
+  #panel {
+    width: 338px;
+    flex: 0 0 338px;
+    padding: 16px 18px 18px;
+    background: linear-gradient(180deg, rgba(8,14,12,0.96), rgba(6,10,9,0.98));
+    border-left: 1px solid rgba(180,220,180,0.12);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  #panel .kicker {
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #86a38c;
+  }
+  #sel-name { margin: 6px 0 2px; font-size: 28px; line-height: 1.05; }
+  #sel-meta { color: #9eb5a4; font-size: 13px; margin-bottom: 14px; }
+  .decomp { list-style: none; margin: 0; padding: 0; }
+  .decomp li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 0;
+    border-top: 1px solid rgba(180,220,180,0.1);
+    font-size: 13px;
+  }
+  .decomp li span { color: #9eb5a4; }
+  .decomp li b { font-variant-numeric: tabular-nums; font-weight: 650; }
+  .decomp li.lever {
+    background: rgba(223,243,106,0.08);
+    margin: 0 -8px;
+    padding-left: 8px;
+    padding-right: 8px;
+    border-radius: 8px;
+  }
+  .decomp li.lever span { color: #dff36a; }
+  .decomp li.cmp span { color: #7f8c86; }
+  .bar {
+    height: 4px;
+    margin-top: 8px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .bar i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: #7dffc3;
+  }
+  .note, .formula {
+    font-size: 11px;
+    line-height: 1.45;
+    color: #7f9486;
+    margin: 12px 0 0;
+  }
+  .formula { color: #c8e0cc; font-family: ui-monospace, Consolas, monospace; }
+  .scan {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,0.015) 0 1px,
+      transparent 1px 3px
+    );
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+<div id="board" class="mode-published">
+  <header class="topbar">
+    <div class="brand">fplbench<b>GW1 26/27</b></div>
+    <div class="stat gold"><em>Captain</em><strong>Haaland</strong></div>
+    <div class="stat"><em>Cost</em><strong>£100.0m</strong></div>
+    <div class="stat"><em>Σ e_points</em><strong>78.923</strong></div>
+    <div class="stat"><em>mae_decomposed</em><strong>0.8757</strong></div>
+    <div class="stat"><em>n_common</em><strong>29,428</strong></div>
+    <div class="modes" role="group" aria-label="Score mode">
+      <button type="button" data-mode="published" aria-pressed="true">published (minutes-gated)</button>
+      <button type="button" data-mode="ungated" aria-pressed="false">ungated pred_points</button>
+    </div>
+  </header>
+  <div class="stage">
+    <div class="field-col">
+      <div class="pitch" id="pitch">
+        <svg class="grass" viewBox="0 0 1050 680" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#1a4a28"/>
+              <stop offset="1" stop-color="#0c2416"/>
+            </linearGradient>
+          </defs>
+          <rect width="1050" height="680" fill="url(#night)"/>
+          <g>
+            <rect y="0" width="1050" height="68" fill="#143820"/>
+            <rect y="136" width="1050" height="68" fill="#143820"/>
+            <rect y="272" width="1050" height="68" fill="#143820"/>
+            <rect y="408" width="1050" height="68" fill="#143820"/>
+            <rect y="544" width="1050" height="68" fill="#143820"/>
+          </g>
+          <g fill="none" stroke="rgba(236,246,232,0.55)" stroke-width="3">
+            <rect x="60" y="40" width="930" height="600" rx="4"/>
+            <line x1="60" y1="340" x2="990" y2="340"/>
+            <circle cx="525" cy="340" r="92"/>
+            <circle cx="525" cy="340" r="4" fill="rgba(236,246,232,0.8)" stroke="none"/>
+            <rect x="270" y="40" width="510" height="165"/>
+            <rect x="365" y="40" width="320" height="72"/>
+            <rect x="270" y="475" width="510" height="165"/>
+            <rect x="365" y="568" width="320" height="72"/>
+            <path d="M 434 205 A 92 92 0 0 0 616 205"/>
+            <path d="M 434 475 A 92 92 0 0 1 616 475"/>
+            <rect x="478" y="28" width="94" height="12"/>
+            <rect x="478" y="640" width="94" height="12"/>
+          </g>
+        </svg>
+        <div class="story" id="story">4-5-1 · published e_points_final</div>
+        <div id="chips"></div>
+      </div>
+      <div class="dugout">
+        <label>Bench</label>
+        <div id="bench-chips"></div>
+      </div>
+    </div>
+    <aside id="panel">
+      <div class="kicker">decomposition</div>
+      <h2 id="sel-name">—</h2>
+      <div id="sel-meta">click a chip</div>
+      <div class="bar" aria-hidden="true"><i id="min-bar"></i></div>
+      <ol class="decomp">
+        <li><span>pred_points</span><b id="d-pp">—</b></li>
+        <li class="lever"><span>minutes_gate = clip(pred_minutes/90, 0, 1)</span><b id="d-mg">—</b></li>
+        <li><span>pred_points_decomposed</span><b id="d-ppd">—</b></li>
+        <li><span>defcon_pts = 2 * pred_defcon</span><b id="d-dc">—</b></li>
+        <li><span>e_points_final</span><b id="d-ep">—</b></li>
+        <li><span>e_points_p90 (ceiling)</span><b id="d-p90">—</b></li>
+        <li class="cmp"><span>ep_next (comparison only, not a feature)</span><b id="d-en">—</b></li>
+      </ol>
+      <p class="formula">e_points_final = pred_points_decomposed + 2 * pred_defcon</p>
+      <p class="note">Toggle ungated to restack the same 15 by pred_points. Minutes is why the published XI is not the raw-points XI.</p>
+    </aside>
+  </div>
+  <div class="scan"></div>
+</div>
+<script>
+window.FPLBENCH_WOW_DATA = {"captain":"Haaland","cost_m":100.0,"total_e_points":78.923,"mae_decomposed":0.8756792241522097,"n_common":29428,"published_points":"pred_points_decomposed","defcon_auc":0.8179409356405918,"xi":[{"web_name":"Trafford","position":"GK","team_name":"Leeds","opponent_name":"Nott'm Forest","now_cost":50,"pred_minutes":90.0,"pred_defcon":0.0,"pred_points":5.458081712754813,"pred_points_decomposed":5.458081712754813,"e_points_final":5.458081712754813,"e_points_p90":12.684520739845654,"ep_next":2.6,"selected_by_percent":2.6},{"web_name":"Tarkowski","position":"DEF","team_name":"Everton","opponent_name":"Crystal Palace","now_cost":60,"pred_minutes":90.0,"pred_defcon":0.1666666666666666,"pred_points":4.584502449412376,"pred_points_decomposed":4.584502449412376,"e_points_final":4.917835782745709,"e_points_p90":11.44217159356282,"ep_next":2.8,"selected_by_percent":9.6},{"web_name":"Milenković","position":"DEF","team_name":"Nott'm Forest","opponent_name":"Leeds","now_cost":55,"pred_minutes":88.8157894736842,"pred_defcon":0.2756756756756757,"pred_points":4.083804304620569,"pred_points_decomposed":4.030070037454509,"e_points_final":4.58142138880586,"e_points_p90":9.764194778221594,"ep_next":2.5,"selected_by_percent":2.3},{"web_name":"Van Hecke","position":"DEF","team_name":"Spurs","opponent_name":"Brentford","now_cost":50,"pred_minutes":89.16666666666667,"pred_defcon":0.2,"pred_points":4.115525788844849,"pred_points_decomposed":4.077419068577767,"e_points_final":4.477419068577768,"e_points_p90":9.116020696052692,"ep_next":2.2,"selected_by_percent":8.8},{"web_name":"Aina","position":"DEF","team_name":"Nott'm Forest","opponent_name":"Leeds","now_cost":45,"pred_minutes":88.16666666666667,"pred_defcon":0.1666666666666666,"pred_points":4.170475725339153,"pred_points_decomposed":4.085521590193356,"e_points_final":4.4188549235266885,"e_points_p90":11.672593545504158,"ep_next":1.7,"selected_by_percent":4.3},{"web_name":"B.Fernandes","position":"MID","team_name":"Man Utd","opponent_name":"Hull City","now_cost":120,"pred_minutes":87.57142857142857,"pred_defcon":0.0186294078509647,"pred_points":7.526079136749054,"pred_points_decomposed":7.3229944616304286,"e_points_final":7.360253277332358,"e_points_p90":11.441452723792578,"ep_next":4.0,"selected_by_percent":47.9},{"web_name":"Szoboszlai","position":"MID","team_name":"Liverpool","opponent_name":"Newcastle","now_cost":70,"pred_minutes":89.77777777777777,"pred_defcon":0.0433763188745603,"pred_points":7.07792564216178,"pred_points_decomposed":7.060449282551503,"e_points_final":7.147201920300624,"e_points_p90":12.103774498342752,"ep_next":2.5,"selected_by_percent":42.1},{"web_name":"Gakpo","position":"MID","team_name":"Liverpool","opponent_name":"Newcastle","now_cost":70,"pred_minutes":76.0,"pred_defcon":0.0033670033670033,"pred_points":6.310630813964439,"pred_points_decomposed":5.328977131792192,"e_points_final":5.335711138526199,"e_points_p90":8.833682420110216,"ep_next":2.5,"selected_by_percent":3.3},{"web_name":"Anderson","position":"MID","team_name":"Man City","opponent_name":"Bournemouth","now_cost":65,"pred_minutes":87.6842105263158,"pred_defcon":0.09375,"pred_points":5.0769395424792885,"pred_points_decomposed":4.946304840801459,"e_points_final":5.133804840801459,"e_points_p90":11.49078868221015,"ep_next":2.3,"selected_by_percent":10.8},{"web_name":"Groß","position":"MID","team_name":"Brighton","opponent_name":"Aston Villa","now_cost":55,"pred_minutes":86.10526315789474,"pred_defcon":0.0303605313092979,"pred_points":5.133450447686242,"pred_points_decomposed":4.911301130067071,"e_points_final":4.9720221926856665,"e_points_p90":11.870419934626891,"ep_next":2.0,"selected_by_percent":11.3},{"web_name":"Haaland","position":"FWD","team_name":"Man City","opponent_name":"Bournemouth","now_cost":155,"pred_minutes":84.37142857142857,"pred_defcon":0.0033670033670033,"pred_points":7.933720131341322,"pred_points_decomposed":7.437547792968547,"e_points_final":7.444281799702554,"e_points_p90":13.717548989872103,"ep_next":4.0,"selected_by_percent":73.3}],"bench":[{"web_name":"Kinsky","position":"GK","team_name":"Spurs","opponent_name":"Brentford","now_cost":45,"pred_minutes":90.0,"pred_defcon":0.0,"pred_points":5.152837506653584,"pred_points_decomposed":5.152837506653584,"e_points_final":5.152837506653584,"e_points_p90":13.336650670800257,"ep_next":1.9,"selected_by_percent":19.8},{"web_name":"Diop","position":"DEF","team_name":"Ipswich Town","opponent_name":"Sunderland","now_cost":40,"pred_minutes":62.46153846153846,"pred_defcon":0.1666666666666666,"pred_points":5.729374795928231,"pred_points_decomposed":3.976284046404892,"e_points_final":4.309617379738225,"e_points_p90":8.179506442528323,"ep_next":1.0,"selected_by_percent":18.4},{"web_name":"Calvert-Lewin","position":"FWD","team_name":"Leeds","opponent_name":"Nott'm Forest","now_cost":60,"pred_minutes":77.74285714285715,"pred_defcon":0.0033670033670033,"pred_points":4.931156258038048,"pred_points_decomposed":4.2595797390862,"e_points_final":4.266313745820207,"e_points_p90":9.420134599489788,"ep_next":2.0,"selected_by_percent":25.6},{"web_name":"Evanilson","position":"FWD","team_name":"Bournemouth","opponent_name":"Man City","now_cost":60,"pred_minutes":76.13888888888889,"pred_defcon":0.0186294078509647,"pred_points":4.622038870188147,"pred_points_decomposed":3.9101878219708985,"e_points_final":3.947446637672828,"e_points_p90":8.090053636710207,"ep_next":2.0,"selected_by_percent":2.1}],"formula":"e_points_final = pred_points_decomposed + 2 * pred_defcon"};
+(function (global) {
+  var payload = global.FPLBENCH_WOW_DATA;
+  var mode = "published";
+  var selected = payload && payload.captain;
+  var CIRC = 2 * Math.PI * 10;
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/"/g, "&quot;");
+  }
+  function num(v, d) {
+    if (v === null || v === undefined || v !== v) return "—";
+    return Number(v).toFixed(d);
+  }
+  function gateOf(p) {
+    return Math.max(0, Math.min(1, Number(p.pred_minutes) / 90));
+  }
+  function allPlayers() {
+    return payload.xi.concat(payload.bench);
+  }
+  function byName(name) {
+    var all = allPlayers();
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].web_name === name) return all[i];
+    }
+    return null;
+  }
+  function shapeOf(xi) {
+    var s = {GK: 0, DEF: 0, MID: 0, FWD: 0};
+    xi.forEach(function (p) { if (s[p.position] !== undefined) s[p.position] += 1; });
+    return s;
+  }
+  function restack(nextMode) {
+    if (nextMode === "published") {
+      return {xi: payload.xi.slice(), bench: payload.bench.slice(), key: "e_points_final"};
+    }
+    var shape = shapeOf(payload.xi);
+    var pool = allPlayers();
+    var used = {};
+    var xi = [];
+    ["GK", "DEF", "MID", "FWD"].forEach(function (pos) {
+      var cand = pool.filter(function (p) { return p.position === pos; })
+        .sort(function (a, b) { return b.pred_points - a.pred_points; })
+        .slice(0, shape[pos] || 0);
+      cand.forEach(function (p) { used[p.web_name] = true; xi.push(p); });
+    });
+    var bench = pool.filter(function (p) { return !used[p.web_name]; });
+    bench.sort(function (a, b) {
+      if (a.position === "GK" && b.position !== "GK") return -1;
+      if (b.position === "GK" && a.position !== "GK") return 1;
+      return b.pred_points - a.pred_points;
+    });
+    return {xi: xi, bench: bench, key: "pred_points"};
+  }
+  function slotMap(xi, bench) {
+    var rows = {GK: [], DEF: [], MID: [], FWD: []};
+    var yOf = {GK: 84, DEF: 64, MID: 39, FWD: 16};
+    xi.forEach(function (p) {
+      if (rows[p.position]) rows[p.position].push(p);
+      else rows.MID.push(p);
+    });
+    var pos = {};
+    ["GK", "DEF", "MID", "FWD"].forEach(function (k) {
+      var arr = rows[k];
+      var n = arr.length;
+      arr.forEach(function (p, i) {
+        var x = n <= 1 ? 50 : 13 + (74 * i) / (n - 1);
+        pos[p.web_name] = {zone: "pitch", x: x, y: yOf[k]};
+      });
+    });
+    bench.forEach(function (p, i) {
+      var n = Math.max(bench.length, 1);
+      var x = n <= 1 ? 18 : 12 + (76 * i) / (n - 1);
+      pos[p.web_name] = {zone: "bench", x: x, y: 52};
+    });
+    return pos;
+  }
+  function chipEl(p, key) {
+    var g = gateOf(p);
+    var dash = (g * CIRC).toFixed(2) + " " + CIRC.toFixed(2);
+    var defc = 2 * Number(p.pred_defcon || 0);
+    var pipOp = (0.2 + Math.min(1, defc / 0.32)).toFixed(2);
+    var isCap = p.web_name === payload.captain;
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chip" + (isCap ? " cap" : "");
+    btn.setAttribute("data-name", p.web_name);
+    btn.innerHTML =
+      '<svg class="ring" viewBox="0 0 26 26" aria-hidden="true">' +
+        '<circle class="bg" cx="13" cy="13" r="10"></circle>' +
+        '<circle class="fg" cx="13" cy="13" r="10" stroke-dasharray="' + dash + '"></circle>' +
+      "</svg>" +
+      '<span class="arm">C</span>' +
+      '<span class="nm">' + esc(p.web_name) + "</span>" +
+      '<span class="pts">' + num(p[key], 2) + "</span>" +
+      '<span class="club">' + esc(p.team_name || "") + "</span>" +
+      '<span class="pip" style="opacity:' + pipOp + '" title="2*pred_defcon"></span>';
+    btn.addEventListener("click", function () { selectPlayer(p.web_name); });
+    return btn;
+  }
+  var chipCache = {};
+  function paint() {
+    var stacked = restack(mode);
+    var publishedNames = {};
+    payload.xi.forEach(function (p) { publishedNames[p.web_name] = true; });
+    var nowNames = {};
+    stacked.xi.forEach(function (p) { nowNames[p.web_name] = true; });
+    var slots = slotMap(stacked.xi, stacked.bench);
+    var pitch = document.getElementById("chips");
+    var dug = document.getElementById("bench-chips");
+    allPlayers().forEach(function (p) {
+      var el = chipCache[p.web_name] || chipEl(p, stacked.key);
+      chipCache[p.web_name] = el;
+      var pts = el.querySelector(".pts");
+      if (pts) pts.textContent = num(p[stacked.key], 2);
+      var sl = slots[p.web_name];
+      if (!sl) return;
+      el.style.left = sl.x + "%";
+      el.style.top = sl.y + "%";
+      el.classList.toggle("on", p.web_name === selected);
+      el.classList.toggle("swap-in", mode === "ungated" && !publishedNames[p.web_name] && nowNames[p.web_name]);
+      el.classList.toggle("swap-out", mode === "ungated" && publishedNames[p.web_name] && !nowNames[p.web_name]);
+      (sl.zone === "bench" ? dug : pitch).appendChild(el);
+    });
+    var swapped = 0;
+    Object.keys(nowNames).forEach(function (n) { if (!publishedNames[n]) swapped += 1; });
+    var story = document.getElementById("story");
+    if (mode === "published") {
+      story.textContent = "4-5-1 · published e_points_final";
+    } else {
+      story.textContent = "restack by pred_points · " + swapped + " XI swap" + (swapped === 1 ? "" : "s");
+    }
+    if (selected) fillPanel(byName(selected));
+  }
+  function fillPanel(p) {
+    if (!p) return;
+    document.getElementById("sel-name").textContent = p.web_name;
+    var vs = p.opponent_name ? (" vs " + p.opponent_name) : "";
+    document.getElementById("sel-meta").textContent =
+      p.position + " · " + (p.team_name || "") + vs +
+      " · £" + (Number(p.now_cost) / 10).toFixed(1) + "m" +
+      " · " + num(p.selected_by_percent, 1) + "% owned";
+    document.getElementById("d-pp").textContent = num(p.pred_points, 3);
+    document.getElementById("d-mg").textContent = num(gateOf(p), 3);
+    document.getElementById("d-ppd").textContent = num(p.pred_points_decomposed, 3);
+    document.getElementById("d-dc").textContent = num(2 * Number(p.pred_defcon || 0), 3);
+    document.getElementById("d-ep").textContent = num(p.e_points_final, 3);
+    var p90el = document.getElementById("d-p90");
+    if (p90el) p90el.textContent = num(p.e_points_p90, 3);
+    document.getElementById("d-en").textContent = num(p.ep_next, 2);
+    document.getElementById("min-bar").style.width = (gateOf(p) * 100).toFixed(1) + "%";
+    var chips = document.querySelectorAll(".chip");
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].classList.toggle("on", chips[i].getAttribute("data-name") === p.web_name);
+    }
+  }
+  function selectPlayer(name) {
+    var p = byName(name);
+    if (!p) return;
+    selected = name;
+    fillPanel(p);
+  }
+  function setMode(next) {
+    mode = next === "ungated" ? "ungated" : "published";
+    var board = document.getElementById("board");
+    board.classList.remove("mode-published", "mode-ungated");
+    board.classList.add("mode-" + mode);
+    var btns = document.querySelectorAll(".modes button");
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].setAttribute("aria-pressed", btns[i].getAttribute("data-mode") === mode ? "true" : "false");
+    }
+    paint();
+  }
+  function init() {
+    var btns = document.querySelectorAll(".modes button");
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].addEventListener("click", function (ev) {
+        setMode(ev.currentTarget.getAttribute("data-mode"));
+      });
+    }
+    paint();
+    if (payload && payload.captain) selectPlayer(payload.captain);
+  }
+  window.FPLBENCH_WOW = {
+    payload: payload,
+    selectPlayer: selectPlayer,
+    setMode: setMode
+  };
+  init();
+})(window);
+</script>
+</body>
+</html>

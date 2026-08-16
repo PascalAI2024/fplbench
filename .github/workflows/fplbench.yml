@@ -1,0 +1,129 @@
+# fplbench weekly loop: pre-deadline predict + post-GW self-score.
+#
+# Predict entrypoint (local / CI):
+#   python scripts/predict_live.py
+#   # or: python -c "from fplbench.ingest import download_live; from fplbench.predict import predict_next_gw; download_live(); predict_next_gw()"
+#
+# Post-GW entrypoint:
+#   python scripts/score_gw.py
+#   python scripts/score_gw.py --gw 1 --preds outputs/predictions/gw1_2026-27.csv
+
+name: fplbench
+
+"on":
+  schedule:
+    # Fridays 15:00 UTC — before typical FPL deadlines (season Aug–May).
+    - cron: "0 15 * * 5"
+    # Tuesdays 10:00 UTC — after most GWs have finished.
+    - cron: "0 10 * * 2"
+  workflow_dispatch:
+    inputs:
+      run_pre_deadline:
+        description: "Run pre-deadline ingest + predict"
+        type: boolean
+        default: true
+      run_post_gw:
+        description: "Run post-GW scoring"
+        type: boolean
+        default: true
+      gw:
+        description: "Optional GW number for post-GW (blank = auto)"
+        type: string
+        required: false
+        default: ""
+      preds:
+        description: "Optional predictions CSV for post-GW (blank = auto)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  pre-deadline:
+    name: pre-deadline
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '0 15 * * 5'
+      || github.event_name == 'workflow_dispatch' && inputs.run_pre_deadline
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Live ingest + predict
+        run: python scripts/predict_live.py
+
+      - name: Commit predictions
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # predictions may still be gitignored until T16; force-add for the weekly stamp
+          git add -f outputs/predictions/*.csv 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "No prediction changes to commit"
+          else
+            git commit -m "fplbench: pre-deadline predictions $(date -u +%Y-%m-%d)"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+  post-gw:
+    name: post-gw
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '0 10 * * 2'
+      || github.event_name == 'workflow_dispatch' && inputs.run_post_gw
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Score finished GW
+        env:
+          GW_INPUT: ${{ inputs.gw }}
+          PREDS_INPUT: ${{ inputs.preds }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ -n "${GW_INPUT:-}" ]]; then
+            args+=(--gw "$GW_INPUT")
+          fi
+          if [[ -n "${PREDS_INPUT:-}" ]]; then
+            args+=(--preds "$PREDS_INPUT")
+          fi
+          python scripts/score_gw.py "${args[@]}"
+
+      - name: Commit RESULTS.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add RESULTS.md
+          if git diff --staged --quiet; then
+            echo "No RESULTS.md changes to commit"
+          else
+            git commit -m "fplbench: post-GW RESULTS.md $(date -u +%Y-%m-%d)"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
