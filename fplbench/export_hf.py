@@ -119,6 +119,12 @@ yet; single-fixture events only.
 ## Recommended citation
 
 Vaastav Anand, FPL Historical Dataset, https://github.com/vaastav/Fantasy-Premier-League
+
+## Links
+
+- Code + weekly self-scoring: https://github.com/PascalAI2024/fplbench
+- GW1 pitch board: https://huggingface.co/spaces/x0me/fplbench-board
+- The model's team in the official FPL game (live from GW1): https://fantasy.premierleague.com/entry/4770634/event/1
 """
 
 
