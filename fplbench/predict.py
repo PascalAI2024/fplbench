@@ -302,7 +302,11 @@ def predict_next_gw(*, skip_tabfm: bool = False) -> pd.DataFrame:
     )
     merged["ep_next"] = pd.to_numeric(merged["ep_next"], errors="coerce")
     merged["season"] = LIVE_SEASON
-    if skip_tabfm:
+    import importlib.util
+
+    if skip_tabfm or importlib.util.find_spec("tabfm") is None:
+        # tabfm is a research-only optional dep (non-commercial license) and is
+        # not installed in CI; the published board uses the LightGBM path.
         merged["pred_points_tabfm"] = np.nan
     else:
         merged["pred_points_tabfm"] = _tabfm_points(
