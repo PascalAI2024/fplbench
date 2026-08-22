@@ -124,7 +124,13 @@ jobs:
           fi
           python scripts/score_gw.py "${args[@]}"
 
+      # Own step so a scoring failure never blocks team tracking.
+      - name: Track team performance
+        if: ${{ !cancelled() }}
+        run: python scripts/track_team.py
+
       - name: Commit RESULTS.md
+        if: ${{ !cancelled() }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -136,3 +142,10 @@ jobs:
             git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
+
+      # Last on purpose: scoring/team commits land even if the Hub upload fails.
+      - name: Publish HF dataset card
+        if: ${{ !cancelled() }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python scripts/publish_hf_card.py

@@ -12,6 +12,7 @@ dependencies = [
   "joblib",
   "pulp",
   "matplotlib",
+  "huggingface_hub",
 ]
 
 [project.optional-dependencies]
