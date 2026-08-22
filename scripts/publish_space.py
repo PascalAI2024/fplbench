@@ -34,7 +34,11 @@ def readme_changed(local: Path) -> bool:
         current = r.text
     except requests.RequestException:
         return True  # can't compare — upload to be safe
-    return current.strip() != local.read_text(encoding="utf-8").strip()
+
+    def norm(s: str) -> str:
+        return s.replace("\r\n", "\n").strip()
+
+    return norm(current) != norm(local.read_text(encoding="utf-8"))
 
 
 def main(argv: list[str] | None = None) -> None:
