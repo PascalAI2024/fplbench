@@ -64,6 +64,12 @@ jobs:
       - name: Install package
         run: pip install -e .
 
+      - name: Hydrate panel from HF dataset
+        run: python scripts/hydrate_panel.py
+
+      - name: Train models
+        run: python -c "from fplbench.train import train, train_quantile_heads; train(); train_quantile_heads()"
+
       - name: Live ingest + predict
         run: python scripts/predict_live.py
 
