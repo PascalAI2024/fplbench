@@ -14,8 +14,17 @@ name: fplbench
   schedule:
     # Fridays 15:00 UTC — before typical FPL deadlines (season Aug–May).
     - cron: "0 15 * * 5"
+    # Thursdays 15:05 UTC — early-deadline GWs; the predict freeze-guard
+    # makes re-running before a committed deadline safe.
+    - cron: "5 15 * * 4"
     # Tuesdays 10:00 UTC — after most GWs have finished.
     - cron: "0 10 * * 2"
+    # Sat/Sun/Mon 21:40 UTC — matchday scoreboard refresh after most matches
+    # (scoring self-skips unfinished GWs; team tracking + card + board pick
+    # up live points).
+    - cron: "40 21 * * 6"
+    - cron: "40 21 * * 0"
+    - cron: "40 21 * * 1"
   workflow_dispatch:
     inputs:
       run_pre_deadline:
@@ -50,6 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'schedule' && github.event.schedule == '0 15 * * 5'
+      || github.event_name == 'schedule' && github.event.schedule == '5 15 * * 4'
       || github.event_name == 'workflow_dispatch' && inputs.run_pre_deadline
     steps:
       - name: Checkout
@@ -90,11 +100,25 @@ jobs:
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
 
+      # Refresh the Space board so its deadline/GW header moves with the
+      # fresh predictions. Last on purpose: a Hub hiccup never blocks the
+      # prediction commit above.
+      - name: Build + publish Space board
+        if: ${{ !cancelled() }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python scripts/build_board.py
+          python scripts/publish_space.py
+
   post-gw:
     name: post-gw
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'schedule' && github.event.schedule == '0 10 * * 2'
+      || github.event_name == 'schedule' && github.event.schedule == '40 21 * * 6'
+      || github.event_name == 'schedule' && github.event.schedule == '40 21 * * 0'
+      || github.event_name == 'schedule' && github.event.schedule == '40 21 * * 1'
       || github.event_name == 'workflow_dispatch' && inputs.run_post_gw
     steps:
       - name: Checkout
@@ -149,3 +173,12 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python scripts/publish_hf_card.py
+
+      # Regenerate + upload the living Space board (pitch, tables, countdown).
+      - name: Build + publish Space board
+        if: ${{ !cancelled() }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python scripts/build_board.py
+          python scripts/publish_space.py
