@@ -67,6 +67,9 @@ jobs:
       - name: Hydrate panel from HF dataset
         run: python scripts/hydrate_panel.py
 
+      - name: Download raw season CSVs (vaastav)
+        run: python -c "from fplbench.ingest import download_vaastav; download_vaastav()"
+
       - name: Train models
         run: python -c "from fplbench.train import train, train_quantile_heads; train(); train_quantile_heads()"
 
