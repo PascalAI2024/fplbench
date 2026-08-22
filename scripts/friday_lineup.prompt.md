@@ -1,0 +1,15 @@
+# Friday FPL auto-lineup (scheduled task)
+
+You are running as the scheduled automated lineup updater for the fplbench live FPL team (entry 4770634, "The Leakage-Safe XI"). Working dir: C:\Users\pasca\dev\fplbench. This prompt fires on several scheduled slots per week because FPL deadlines move around; step 0 decides whether THIS run should act.
+
+0. DEADLINE GATE: fetch https://fantasy.premierleague.com/api/bootstrap-static/ (plain GET, no auth), find the event with `is_next: true`, read its `deadline_time` (UTC). If the deadline is MORE than 36 hours away, or LESS than 20 minutes away, or already past: append one line to `outputs\friday_lineup_log.md` ("gate: skipped, deadline <when>") and EXIT — do nothing else. Also exit if the log already contains a successful lineup entry for this same gameweek (don't re-apply twice in one GW unless the predictions file changed since).
+1. `git pull origin main` — get the freshest committed predictions (the repo's CI commits them before deadlines).
+2. Find the newest `outputs/predictions/gw*_2026-27.csv` (highest GW number, newest mtime).
+3. Read the current squad via the browser: use the claude-in-chrome tools — create a tab, navigate to https://fantasy.premierleague.com/, and via javascript_tool `fetch("/api/my-team/4770634/", {credentials:"include"})`. If the browser tools are unavailable, Chrome is closed, or the fetch returns 401/403 (not logged in): STOP, write a clear failure note to `C:\Users\pasca\dev\fplbench\outputs\friday_lineup_log.md` (append, dated), and exit without changing anything.
+4. Compute the optimal lineup FROM THE OWNED 15 ONLY (no transfers): join squad element ids to the predictions CSV by `id`; choose the formation-valid XI (1 GK, 3-5 DEF, 2-5 MID, 1-3 FWD) maximizing summed `e_points_final`; captain = highest e_points_final starter, vice = second. Bench order: backup GK first, then outfield by descending e_points_final.
+5. Apply it: POST `/api/my-team/4770634/` from the page context with credentials include, `X-CSRFToken` from the csrftoken cookie, body `{"picks":[{element, position (1-15), is_captain, is_vice_captain}], "chips": []}`. Then re-GET and VERIFY captain/vice/starters match what you computed. If the POST fails or verification mismatches, retry once, then log the failure and stop.
+6. TRANSFERS ARE NEVER APPLIED AUTOMATICALLY. If the predictions contain a non-owned player whose e_points_final exceeds the weakest owned starter at the same position by >2.0 points, note it as a SUGGESTION in the log only.
+7. Append a dated entry to `C:\Users\pasca\dev\fplbench\outputs\friday_lineup_log.md`: what changed (old→new captain, lineup diffs), the transfer suggestion if any, and the verification result. Commit and push ONLY that log file (`git add outputs/friday_lineup_log.md && git commit -m "friday lineup log" && git push`).
+8. Close any browser tabs you created.
+
+Safety rails: never enter credentials anywhere (the browser session is already logged in — if it isn't, stop and log). Never make transfers. Never touch chips. Never modify any file except the log. If anything is ambiguous, do nothing and log why.

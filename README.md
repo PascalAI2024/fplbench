@@ -194,3 +194,22 @@ Live score after a finished GW:
 ```bash
 python scripts/score_gw.py --gw 1 --preds outputs/predictions/gw1_2026-27.csv
 ```
+
+## Lineup automation (local)
+
+The starting XI of the live team (entry 4770634) is set by a Windows scheduled
+task on the operator machine, not by CI:
+
+- `scripts/friday_lineup.cmd` pipes `scripts/friday_lineup.prompt.md` into a
+  headless Claude run. Three self-gating schtasks slots fire per week because
+  FPL deadlines move around.
+- **Deadline gate**: each run first reads the next deadline from the public
+  bootstrap API and exits unless it is 20 minutes to 36 hours away (and not
+  already applied for that GW), so extra slots are harmless no-ops.
+- It only reorders the owned 15 (formation-valid XI + captain/vice + bench
+  order, maximizing `e_points_final` from the latest committed predictions).
+  **Transfers are never applied automatically** — at most a suggestion is
+  written to the log.
+- Requires Chrome open and logged into fantasy.premierleague.com on the
+  operator machine (the run uses the existing browser session; it never
+  handles credentials). Each run appends to `outputs/friday_lineup_log.md`.
