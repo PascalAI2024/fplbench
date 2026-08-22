@@ -119,7 +119,11 @@ def _row_line(gw: int, metrics: dict[str, Any]) -> str:
 
 
 def parse_results_table(text: str) -> dict[int, dict[str, Any]]:
-    """Parse GW metric rows from a RESULTS.md body."""
+    """Parse GW metric rows from a RESULTS.md body.
+
+    Rows whose cells do not parse as the scoring schema (e.g. the team
+    performance table, which also starts with a GW column) are skipped.
+    """
     out: dict[int, dict[str, Any]] = {}
     for line in text.splitlines():
         s = line.strip()
@@ -140,53 +144,64 @@ def parse_results_table(text: str) -> dict[int, dict[str, Any]]:
                 return float("nan")
             return float(x)
 
-        out[gw] = {
-            "n_common": int(parts[1]) if parts[1] else 0,
-            "mae_model": _num(parts[2]),
-            "mae_ep_next": _num(parts[3]),
-            "n_played": int(parts[4]) if parts[4] else 0,
-            "mae_model_played": _num(parts[5]),
-            "mae_ep_next_played": _num(parts[6]),
-        }
+        try:
+            out[gw] = {
+                "n_common": int(parts[1]) if parts[1] else 0,
+                "mae_model": _num(parts[2]),
+                "mae_ep_next": _num(parts[3]),
+                "n_played": int(parts[4]) if parts[4] else 0,
+                "mae_model_played": _num(parts[5]),
+                "mae_ep_next_played": _num(parts[6]),
+            }
+        except ValueError:
+            continue
     return out
 
 
-def _table_header_index(lines: list[str]) -> int | None:
-    """Index of the `| GW | …` header, or None if the table is missing."""
-    for i, line in enumerate(lines):
-        s = line.strip()
-        if not s.startswith("|"):
-            continue
-        parts = [p.strip() for p in s.strip("|").split("|")]
-        if parts and parts[0].lower() == "gw":
-            return i
-    return None
+def _is_scoring_header(line: str) -> bool:
+    """True for the `| GW | n_common | …` header (not the team table's GW header)."""
+    s = line.strip()
+    if not s.startswith("|"):
+        return False
+    parts = [p.strip() for p in s.strip("|").split("|")]
+    return len(parts) >= 2 and parts[0].lower() == "gw" and parts[1] == "n_common"
 
 
-def _extract_preamble(text: str) -> str:
-    """Keep everything above the results table so score_gw does not wipe notes."""
+def split_results_md(text: str) -> tuple[str, dict[int, dict[str, Any]], str]:
+    """Split RESULTS.md into (preamble, scoring rows, postamble).
+
+    The postamble is everything after the scoring table — e.g. the team
+    performance section maintained by scripts/track_team.py — and must
+    survive score_gw upserts.
+    """
     lines = text.splitlines()
-    idx = _table_header_index(lines)
+    idx = next((i for i, ln in enumerate(lines) if _is_scoring_header(ln)), None)
     if idx is None:
         body = text.strip()
-        return body if body else DEFAULT_PREAMBLE
-    preamble = "\n".join(lines[:idx]).rstrip()
-    return preamble if preamble else DEFAULT_PREAMBLE
+        return (body if body else DEFAULT_PREAMBLE, {}, "")
+    end = idx + 1
+    while end < len(lines) and lines[end].strip().startswith("|"):
+        end += 1
+    preamble = "\n".join(lines[:idx]).rstrip() or DEFAULT_PREAMBLE
+    rows = parse_results_table("\n".join(lines[idx:end]))
+    postamble = "\n".join(lines[end:]).strip()
+    return preamble, rows, postamble
 
 
 def upsert_results_md(path: Path | str, gw: int, metrics: dict[str, Any]) -> None:
     """Write or replace one GW row in RESULTS.md (idempotent).
 
-    Existing text above the table (the preamble) is preserved. A missing file
-    gets DEFAULT_PREAMBLE, including the 'first data row lands after GW1' note.
+    Existing text above the table (the preamble) and below it (the postamble,
+    e.g. the team performance section) is preserved. A missing file gets
+    DEFAULT_PREAMBLE, including the 'first data row lands after GW1' note.
     """
     path = Path(path)
     existing: dict[int, dict[str, Any]] = {}
     preamble = DEFAULT_PREAMBLE
+    postamble = ""
     if path.exists():
         text = path.read_text(encoding="utf-8")
-        existing = parse_results_table(text)
-        preamble = _extract_preamble(text)
+        preamble, existing, postamble = split_results_md(text)
     existing[int(gw)] = {
         "n_common": int(metrics["n_common"]),
         "mae_model": metrics["mae_model"],
@@ -201,6 +216,8 @@ def upsert_results_md(path: Path | str, gw: int, metrics: dict[str, Any]) -> Non
     lines = [preamble.rstrip(), "", header, sep]
     for g in sorted(existing):
         lines.append(_row_line(g, existing[g]))
+    if postamble:
+        lines.extend(["", postamble])
     lines.append("")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")

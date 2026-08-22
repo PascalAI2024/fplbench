@@ -5,7 +5,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from fplbench.score import parse_results_table, score_gameweek, upsert_results_md
+from fplbench.score import (
+    parse_results_table,
+    score_gameweek,
+    split_results_md,
+    upsert_results_md,
+)
 
 
 def _preds() -> pd.DataFrame:
@@ -114,3 +119,40 @@ def test_upsert_preserves_gw1_note(tmp_path: Path):
     assert "first data row lands after GW1" in custom_text
     assert "Custom keeper" in custom_text
     assert parse_results_table(custom_text)[2]["n_common"] == 10
+
+
+def test_upsert_preserves_team_section_postamble(tmp_path: Path):
+    """The team table below the scoring table must survive upserts unparsed."""
+    metrics = {
+        "n_common": 10,
+        "mae_model": 1.5,
+        "mae_ep_next": 1.7,
+        "n_played": 8,
+        "mae_model_played": 1.2,
+        "mae_ep_next_played": 1.4,
+    }
+    team_section = (
+        "## Team — The Leakage-Safe XI (entry 4770634)\n\n"
+        "| GW | pts | GW avg | vs avg | captain | overall rank | total pts |\n"
+        "|---|---|---|---|---|---|---|\n"
+        "| 1 (live) | 25 | 23 | +2 | Haaland | 3,383,283 | 25 |\n"
+        "| 2 | 60 | 50 | +10 | M.Salah | 1,000,000 | 85 |"
+    )
+    path = tmp_path / "RESULTS.md"
+    upsert_results_md(path, 1, metrics)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n" + team_section + "\n",
+        encoding="utf-8",
+    )
+    upsert_results_md(path, 2, metrics)
+    upsert_results_md(path, 1, metrics)
+    text = path.read_text(encoding="utf-8")
+    assert "Leakage-Safe XI" in text
+    assert "Haaland" in text
+    # team rows must not leak into the scoring table (captain is not a metric)
+    preamble, rows, postamble = split_results_md(text)
+    assert set(rows) == {1, 2}
+    assert "M.Salah" not in preamble
+    assert "M.Salah" in postamble
+    # scoring table still has exactly one GW2 row despite the team table's "| 2 |"
+    assert rows[2]["n_common"] == 10

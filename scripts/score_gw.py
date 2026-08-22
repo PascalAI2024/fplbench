@@ -2,7 +2,7 @@
 
 Usage:
   python scripts/score_gw.py --gw 1 --preds outputs/predictions/gw1_2026-27.csv
-  python scripts/score_gw.py          # auto-pick latest outputs/predictions/gw*.csv
+  python scripts/score_gw.py          # auto: score the latest FINISHED GW's gw*.csv
   python scripts/score_gw.py --help
 """
 
@@ -25,8 +25,20 @@ from fplbench.score import score_gameweek, upsert_results_md
 
 HEADERS = {"User-Agent": "fplbench/0.1 (research; leakage-safe FPL panel)"}
 EVENT_LIVE = "https://fantasy.premierleague.com/api/event/{gw}/live/"
+BOOTSTRAP = "https://fantasy.premierleague.com/api/bootstrap-static/"
 DEFAULT_RESULTS = ROOT / "RESULTS.md"
 _GW_IN_NAME = re.compile(r"gw(\d+)", re.IGNORECASE)
+
+
+def fetch_bootstrap_events() -> list[dict]:
+    r = requests.get(BOOTSTRAP, headers=HEADERS, timeout=60)
+    r.raise_for_status()
+    return r.json().get("events") or []
+
+
+def latest_finished_event(events: list[dict]) -> int | None:
+    finished = [int(e["id"]) for e in events if e.get("finished")]
+    return max(finished) if finished else None
 
 
 def fetch_event_live(gw: int) -> pd.DataFrame:
@@ -125,7 +137,28 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = p.parse_args(argv)
 
-    gw, preds_path = resolve_gw_and_preds(args.gw, args.preds)
+    # Online mode (no --actuals): guard on the official finished flag so a
+    # Tuesday run during an unfinished GW is a clean no-op, not a red X.
+    events: list[dict] | None = None
+    gw_arg = args.gw
+    if args.actuals is None:
+        events = fetch_bootstrap_events()
+        if gw_arg is None and args.preds is None:
+            latest = latest_finished_event(events)
+            if latest is None:
+                print("No finished gameweek yet — skipping scoring")
+                return
+            gw_arg = latest
+
+    gw, preds_path = resolve_gw_and_preds(gw_arg, args.preds)
+
+    if events is not None:
+        ev = next((e for e in events if int(e.get("id", -1)) == int(gw)), None)
+        if ev is None:
+            raise SystemExit(f"GW {gw} not found in bootstrap events")
+        if not ev.get("finished"):
+            print(f"GW {gw} not finished — skipping scoring")
+            return
     preds = pd.read_csv(preds_path)
     actuals = load_actuals(gw, args.actuals)
     metrics = score_gameweek(preds, actuals)
