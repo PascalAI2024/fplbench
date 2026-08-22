@@ -601,8 +601,22 @@ def availability_scale(df: pd.DataFrame) -> pd.Series:
     return scale.where(~unavailable, 0.0)
 
 
-def _rewrite_gw1_with_calibrator(cal) -> None:
-    path = PREDS / "gw1_2026-27.csv"
+def _rewrite_next_gw_with_calibrator(cal) -> None:
+    """Refresh the CURRENT target-GW board with a freshly shipped calibrator.
+
+    Must never touch a past GW's committed predictions (benchmark integrity):
+    the target is resolved from the live bootstrap snapshot, and a missing
+    snapshot or missing file is a no-op — in CI, train() runs before
+    download_live, so committed boards from previous weeks are never rewritten.
+    """
+    from fplbench.paths import LIVE, LIVE_SEASON
+    from fplbench.predict import resolve_next_event
+
+    bootstrap_path = LIVE / "bootstrap.json"
+    if not bootstrap_path.is_file():
+        return
+    bootstrap = json.loads(bootstrap_path.read_text(encoding="utf-8"))
+    path = PREDS / f"gw{resolve_next_event(bootstrap)}_{LIVE_SEASON}.csv"
     if not path.is_file():
         return
     df = pd.read_csv(path)
@@ -641,5 +655,5 @@ def calibrate_existing_artifacts(panel_path: Path | None = None) -> dict:
 
     if cal_metrics["defcon_calibrator_shipped"]:
         cal = joblib.load(MODELS / "defcon_calibrator.joblib")
-        _rewrite_gw1_with_calibrator(cal)
+        _rewrite_next_gw_with_calibrator(cal)
     return metrics

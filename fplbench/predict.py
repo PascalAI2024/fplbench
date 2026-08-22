@@ -122,8 +122,58 @@ def _next_fixtures(
     return fx_long
 
 
-def _prepare_live_merged() -> tuple[pd.DataFrame, list[str], pd.DataFrame]:
-    """Live player list + next-fixture features. Returns (merged, feats, panel)."""
+def resolve_next_event(bootstrap: dict) -> int:
+    """Next event id from bootstrap `events[].is_next` (fallback: first unfinished)."""
+    events = bootstrap.get("events") or []
+    for ev in events:
+        if ev.get("is_next"):
+            return int(ev["id"])
+    for ev in events:
+        if not ev.get("finished"):
+            return int(ev["id"])
+    raise RuntimeError("could not resolve next event from bootstrap events")
+
+
+def _target_gw(bootstrap: dict, fx_long: pd.DataFrame) -> int:
+    """GW the prediction file actually targets.
+
+    The per-team fixtures chosen by `_next_fixtures` are the content of the
+    board, so their modal event wins. Bootstrap `is_next` is the fallback and
+    a cross-check: the two disagree only in odd windows (e.g. a run after the
+    deadline but before any fixture of the current GW is marked finished,
+    which is exactly how gw1_2026-27.csv got overwritten on 2026-08-22).
+    """
+    from_bootstrap = resolve_next_event(bootstrap)
+    if fx_long.empty or "event" not in fx_long.columns:
+        return from_bootstrap
+    events = pd.to_numeric(fx_long["event"], errors="coerce").dropna().astype(int)
+    if events.empty:
+        return from_bootstrap
+    modal = int(events.mode().min())
+    if modal != from_bootstrap:
+        print(
+            f"[fplbench] target GW from fixtures = {modal}, "
+            f"bootstrap is_next = {from_bootstrap}; using fixtures ({modal})"
+        )
+    return modal
+
+
+def _deadline_passed(gw: int) -> bool:
+    """True if the GW's deadline (from the live bootstrap snapshot) is in the past."""
+    from datetime import datetime, timezone
+
+    bootstrap = json.loads((LIVE / "bootstrap.json").read_text(encoding="utf-8"))
+    for ev in bootstrap.get("events") or []:
+        if int(ev.get("id", -1)) == int(gw) and ev.get("deadline_time"):
+            deadline = datetime.fromisoformat(
+                str(ev["deadline_time"]).replace("Z", "+00:00")
+            )
+            return datetime.now(timezone.utc) >= deadline
+    return False
+
+
+def _prepare_live_merged() -> tuple[pd.DataFrame, list[str], pd.DataFrame, int]:
+    """Live player list + next-fixture features. Returns (merged, feats, panel, gw)."""
     bootstrap = json.loads((LIVE / "bootstrap.json").read_text(encoding="utf-8"))
     fixtures = pd.read_csv(LIVE / "fixtures.csv")
     teams = pd.DataFrame(bootstrap["teams"])
@@ -136,10 +186,11 @@ def _prepare_live_merged() -> tuple[pd.DataFrame, list[str], pd.DataFrame]:
     live["player_code"] = live["code"].astype(str)
     live["position"] = live["element_type"].map(POS)
     live["value"] = live["now_cost"]
-    live["gw_in_season"] = 1
     live["name"] = live["web_name"]
 
     fx = _next_fixtures(live, fixtures, teams)
+    gw = _target_gw(bootstrap, fx)
+    live["gw_in_season"] = gw
     live = live.merge(fx, on="team", how="left")
 
     # Carry last-season lags / priors via player_code. GW1 has no in-season history.
@@ -166,11 +217,11 @@ def _prepare_live_merged() -> tuple[pd.DataFrame, list[str], pd.DataFrame]:
         .eq(0)
         .astype(int)
     )
-    merged["gw_in_season"] = 1
+    merged["gw_in_season"] = gw
     merged["was_home"] = pd.to_numeric(merged["was_home"], errors="coerce").fillna(0)
     merged["fdr"] = pd.to_numeric(merged["fdr"], errors="coerce")
     merged["value"] = pd.to_numeric(merged["now_cost"], errors="coerce")
-    return merged, feats, panel
+    return merged, feats, panel, gw
 
 
 def _quantile_shifts() -> tuple[float, float]:
@@ -217,9 +268,9 @@ def apply_quantile_heads(
 
 def attach_quantiles_to_gw1(path: Path | None = None) -> pd.DataFrame:
     """Add quantile columns to an existing GW CSV without refitting TabFM."""
-    dest = path or (PREDS / "gw1_2026-27.csv")
+    merged, feats, _panel, gw = _prepare_live_merged()
+    dest = path or (PREDS / f"gw{gw}_{LIVE_SEASON}.csv")
     existing = pd.read_csv(dest)
-    merged, feats, _panel = _prepare_live_merged()
     X = merged[feats]
     minutes_model = joblib.load(MODELS / "minutes.joblib")
     raw_minutes = pd.Series(minutes_model.predict(X), index=merged.index).clip(0, 90)
@@ -255,7 +306,7 @@ def attach_quantiles_to_gw1(path: Path | None = None) -> pd.DataFrame:
 
 
 def predict_next_gw(*, skip_tabfm: bool = False) -> pd.DataFrame:
-    merged, feats, panel = _prepare_live_merged()
+    merged, feats, panel, gw = _prepare_live_merged()
 
     minutes_model = joblib.load(MODELS / "minutes.joblib")
     defcon_model = joblib.load(MODELS / "defcon.joblib")
@@ -350,6 +401,16 @@ def predict_next_gw(*, skip_tabfm: bool = False) -> pd.DataFrame:
             out_cols.insert(out_cols.index("event"), extra)
     out = merged[out_cols].sort_values("e_points_final", ascending=False)
     PREDS.mkdir(parents=True, exist_ok=True)
-    path = PREDS / "gw1_2026-27.csv"
+    path = PREDS / f"gw{gw}_{LIVE_SEASON}.csv"
+    if path.is_file() and _deadline_passed(gw):
+        # Benchmark integrity: a board committed before its deadline is frozen.
+        # A post-deadline re-run (how gw1_2026-27.csv got overwritten on
+        # 2026-08-22) must never replace it.
+        print(
+            f"[fplbench] gw{gw} deadline has passed and {path.name} already "
+            f"exists — NOT overwriting the committed board"
+        )
+        return out
     out.to_csv(path, index=False)
+    print(f"[fplbench] wrote GW{gw} predictions -> {path.name}")
     return out
