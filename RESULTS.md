@@ -13,4 +13,4 @@ The model's own squad in the official FPL game — [live team page](https://fant
 
 | GW | pts | GW avg | vs avg | captain | overall rank | total pts |
 |---|---|---|---|---|---|---|
-| 1 (live) | 25 | 23 | +2 | Haaland | 3,383,283 | 25 |
+| 1 (live) | 51 | 36 | +15 | Haaland | 793,389 | 51 |
