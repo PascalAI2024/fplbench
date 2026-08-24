@@ -16,6 +16,10 @@ LIVE_SEASON = "2026-27"
 DEFCON_DEF_THRESHOLD = 10  # CBIT
 DEFCON_OUTFIELD_THRESHOLD = 12  # CBIT + recoveries
 
-VAASTAV_RAW = "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master"
+VAASTAV_REVISION = "c2add969e11ec19002a091f8aa60164c9a255854"
+VAASTAV_RAW = (
+    "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/"
+    f"{VAASTAV_REVISION}"
+)
 FPL_BOOTSTRAP = "https://fantasy.premierleague.com/api/bootstrap-static/"
 FPL_FIXTURES = "https://fantasy.premierleague.com/api/fixtures/"

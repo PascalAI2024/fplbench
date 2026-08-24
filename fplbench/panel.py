@@ -1,4 +1,4 @@
-"""Build a leakage-safe player-gameweek panel from vaastav dumps."""
+"""Build a leakage-safe player-fixture panel from vaastav dumps."""
 
 from __future__ import annotations
 
@@ -45,6 +45,7 @@ LAG_COLS = [
     "defcon_count",
     "defcon_hit",
 ]
+FIXTURE_KEYS = ["season", "GW", "player_code", "fixture"]
 
 
 def _normalize_merged(df: pd.DataFrame) -> pd.DataFrame:
@@ -72,6 +73,7 @@ def _attach_codes(merged: pd.DataFrame, players: pd.DataFrame) -> pd.DataFrame:
         players[["season", "element", "code", "web_name"]],
         on=["season", "element"],
         how="left",
+        validate="many_to_one",
     )
     missing = out["code"].isna()
     if missing.any():
@@ -99,7 +101,12 @@ def _attach_fdr(df: pd.DataFrame, fixtures: pd.DataFrame) -> pd.DataFrame:
         )
         if c in fx.columns
     ]
-    out = df.merge(fx[keep], on=["season", "fixture"], how="left")
+    out = df.merge(
+        fx[keep],
+        on=["season", "fixture"],
+        how="left",
+        validate="many_to_one",
+    )
     if {"team_h_difficulty", "team_a_difficulty", "was_home"}.issubset(out.columns):
         out["fdr"] = out["team_a_difficulty"].where(
             out["was_home"], out["team_h_difficulty"]
@@ -241,21 +248,65 @@ def _prior_season_lookup(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def deduplicate_fixture_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove exact source duplicates and reject conflicting fixture rows."""
+    if not set(FIXTURE_KEYS).issubset(df.columns):
+        return df.copy()
+    duplicate_mask = df.duplicated(FIXTURE_KEYS, keep=False)
+    if not duplicate_mask.any():
+        return df.copy()
+
+    conflicts = []
+    for key, group in df.loc[duplicate_mask].groupby(
+        FIXTURE_KEYS, sort=False, dropna=False
+    ):
+        if len(group.drop_duplicates()) > 1:
+            conflicts.append(key)
+    if conflicts:
+        preview = conflicts[:3]
+        raise ValueError(
+            "conflicting duplicate player-fixture rows for "
+            f"{preview}{' ...' if len(conflicts) > len(preview) else ''}"
+        )
+    return df.drop_duplicates(FIXTURE_KEYS, keep="first").copy()
+
+
 def add_lags(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.sort_values(["season", "player_code", "GW"]).copy()
-    present = [c for c in LAG_COLS if c in df.columns]
-    grouped = [df["season"], df["player_code"]]
+    """Add prior-appearance form without leaking between same-GW fixtures.
+
+    Historical DGWs contain one row per player-fixture. Candidates retain the
+    existing appearance-window semantics, but each gameweek receives the
+    candidate available before its first fixture. That safe value is then
+    broadcast to every fixture row in the same gameweek.
+    """
+    out = deduplicate_fixture_rows(df)
+    sort_cols = ["season", "player_code", "GW"]
+    if "kickoff_time" in out.columns:
+        sort_cols.append("kickoff_time")
+    if "fixture" in out.columns:
+        sort_cols.append("fixture")
+    out = out.sort_values(sort_cols, kind="mergesort").copy()
+    present = [col for col in LAG_COLS if col in out.columns]
+    event_keys = ["season", "player_code", "GW"]
+    player_groups = [out["season"], out["player_code"]]
+    event_groups = [out[key] for key in event_keys]
+    first_fixture = ~out.duplicated(event_keys, keep="first")
     for col in present:
-        s = pd.to_numeric(df[col], errors="coerce")
-        df[f"{col}_l1"] = s.groupby(grouped).shift(1)
-        df[f"{col}_r3"] = s.groupby(grouped).transform(
-            lambda x: x.shift(1).rolling(3, min_periods=1).mean()
-        )
-        df[f"{col}_r5"] = s.groupby(grouped).transform(
-            lambda x: x.shift(1).rolling(5, min_periods=1).mean()
-        )
-    df["gw_in_season"] = df["GW"]
-    return df
+        series = pd.to_numeric(out[col], errors="coerce")
+        candidates = {
+            f"{col}_l1": series.groupby(player_groups).shift(1),
+            f"{col}_r3": series.groupby(player_groups).transform(
+                lambda values: values.shift(1).rolling(3, min_periods=1).mean()
+            ),
+            f"{col}_r5": series.groupby(player_groups).transform(
+                lambda values: values.shift(1).rolling(5, min_periods=1).mean()
+            ),
+        }
+        for target, candidate in candidates.items():
+            safe_first = candidate.where(first_fixture)
+            out[target] = safe_first.groupby(event_groups).transform("first")
+    out["gw_in_season"] = out["GW"]
+    return out
 
 
 def apply_prior_season_gw1_lags(df: pd.DataFrame) -> pd.DataFrame:
@@ -322,6 +373,7 @@ def build_panel(seasons: tuple[str, ...] = SEASONS) -> pd.DataFrame:
         fixture_frames.append(fixtures)
         team_frames.append(load_season_teams(season))
     df = pd.concat(frames, ignore_index=True)
+    df = deduplicate_fixture_rows(df)
     fixtures = pd.concat(fixture_frames, ignore_index=True)
     teams = pd.concat(team_frames, ignore_index=True)
     df = _attach_fdr(df, fixtures)

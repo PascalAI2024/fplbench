@@ -1,9 +1,10 @@
-"""Screenshot the GW1 pitch board into docs/img/social.png.
+"""Screenshot the generated public board into docs/img/social.png.
 
 Usage:
   python scripts/make_social.py
 
-Needs Playwright Chromium. Crops `#board` from docs/wow/gw1_pitch.html (1280x800).
+Needs Playwright Chromium. Run ``scripts/build_board.py`` first, then crop the
+responsive public ``#board`` at the canonical 1280 px preview width.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_HTML = ROOT / "docs" / "wow" / "gw1_pitch.html"
+DEFAULT_HTML = ROOT / "outputs" / "board" / "index.html"
 DEFAULT_OUT = ROOT / "docs" / "img" / "social.png"
 
 
@@ -21,7 +22,7 @@ def screenshot_board(html: Path, out: Path) -> Path:
     from playwright.sync_api import sync_playwright
 
     if not html.is_file():
-        raise SystemExit(f"pitch board not found: {html}")
+        raise SystemExit(f"generated board not found: {html}")
 
     out.parent.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:

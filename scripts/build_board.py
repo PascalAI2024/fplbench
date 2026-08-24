@@ -51,6 +51,8 @@ from fplbench.score import split_results_md  # noqa: E402
 
 GITHUB_URL = "https://github.com/PascalAI2024/fplbench"
 DATASET_URL = "https://huggingface.co/datasets/x0me/fplbench"
+PORTFOLIO_URL = "https://github.com/PascalAI2024/portfolio"
+RESULTS_URL = f"{GITHUB_URL}/blob/main/RESULTS.md"
 DEFAULT_OUT = ROOT / "outputs" / "board"
 DEFAULT_RESULTS = ROOT / "RESULTS.md"
 
@@ -60,21 +62,42 @@ ROW_Y = {"GK": 84, "DEF": 64, "MID": 39, "FWD": 16}
 
 SPACE_README = """\
 ---
-title: fplbench board
+title: "fplbench — live benchmark"
 emoji: "⚽"
 colorFrom: green
-colorTo: purple
+colorTo: yellow
 sdk: static
+app_file: index.html
+license: other
+fullWidth: true
+header: mini
 pinned: false
+short_description: "Leakage-safe FPL forecasts, frozen before deadline and scored in public."
+datasets:
+  - x0me/fplbench
+tags:
+  - fantasy-premier-league
+  - football
+  - machine-learning
+  - forecasting
+  - tabular
+  - time-series
+thumbnail: https://raw.githubusercontent.com/PascalAI2024/fplbench/main/docs/img/social.png
 ---
 
-Living board for the fplbench model — regenerated from live FPL data by
-[scripts/build_board.py](https://github.com/PascalAI2024/fplbench/blob/main/scripts/build_board.py)
-on every fplbench workflow run.
+The public operating surface for **fplbench**: a leakage-safe Fantasy Premier
+League model whose forecast is committed before the deadline, entered as a
+real team, and scored after each officially verified gameweek.
 
-- Dataset: https://huggingface.co/datasets/x0me/fplbench
-- Code + weekly self-scoring: https://github.com/PascalAI2024/fplbench
-- The model's team in the official FPL game: https://fantasy.premierleague.com/entry/4770634/history
+- [Explore the dataset](https://huggingface.co/datasets/x0me/fplbench)
+- [Inspect the code and frozen forecasts](https://github.com/PascalAI2024/fplbench)
+- [Read the public score record](https://github.com/PascalAI2024/fplbench/blob/main/RESULTS.md)
+- [View the model's official FPL team](https://fantasy.premierleague.com/entry/4770634/history)
+
+The board is regenerated from public FPL data by
+[`scripts/build_board.py`](https://github.com/PascalAI2024/fplbench/blob/main/scripts/build_board.py).
+Live and post-match-review values remain visibly provisional. Model scores are
+published only when FPL marks the gameweek both `finished` and `data_checked`.
 """
 
 
@@ -176,8 +199,20 @@ def _chip(p: dict[str, Any], x: float, y: float) -> str:
         badge = '<span class="arm vice">V</span>'
     pts = "—" if p.get("points") is None else str(p["points"])
     cls = "chip" + (" cap" if p["captain"] or p["vice"] else "")
+    roles = []
+    if p["captain"]:
+        roles.append("triple captain" if p.get("multiplier") == 3 else "captain")
+    elif p["vice"]:
+        roles.append("vice captain")
+    role_text = f", {', '.join(roles)}" if roles else ""
+    minute_text = "minutes unavailable" if minutes is None else f"{minutes} minutes"
+    aria = html.escape(
+        f"{p['name']}, {pts} points, {p['club']}, {minute_text}{role_text}",
+        quote=True,
+    )
     return (
-        f'<div class="{cls}" style="left:{x:.1f}%;top:{y:.1f}%">'
+        f'<div class="{cls}" role="img" aria-label="{aria}" '
+        f'style="left:{x:.1f}%;top:{y:.1f}%">'
         '<svg class="ring" viewBox="0 0 26 26" aria-hidden="true">'
         '<circle class="bg" cx="13" cy="13" r="10"></circle>'
         f'<circle class="fg" cx="13" cy="13" r="10" stroke-dasharray="{dash}"></circle>'
@@ -214,16 +249,17 @@ def render_chips(squad: list[dict[str, Any]]) -> tuple[str, str, str]:
 
 def team_table_html(team_rows: list[dict[str, Any]]) -> str:
     if not team_rows:
-        return '<p class="note">No gameweek data yet — the first row lands once GW1 kicks off.</p>'
+        return '<p class="note">No public team record is available yet.</p>'
     body = []
     for r in sorted(team_rows, key=lambda x: x["gw"]):
-        gw = f"{r['gw']} (live)" if r["live"] else str(r["gw"])
+        status = r.get("status") or ("live" if r["live"] else "final")
+        gw = f"{r['gw']} ({status})" if status != "final" else str(r["gw"])
         vs = r["vs_avg"]
         vs_cell = "—" if vs is None else (f"+{vs}" if vs > 0 else str(vs))
         rank = r["overall_rank"]
         body.append(
             "<tr>"
-            f"<td>{html.escape(gw)}</td>"
+            f'<th scope="row">{html.escape(gw)}</th>'
             f"<td>{'—' if r['points'] is None else r['points']}</td>"
             f"<td>{'—' if r['average'] is None else r['average']}</td>"
             f"<td>{vs_cell}</td>"
@@ -231,8 +267,14 @@ def team_table_html(team_rows: list[dict[str, Any]]) -> str:
             "</tr>"
         )
     return (
-        "<table><thead><tr><th>GW</th><th>pts</th><th>avg</th><th>vs avg</th>"
-        "<th>rank</th></tr></thead><tbody>" + "".join(body) + "</tbody></table>"
+        '<div class="table-scroll" role="region" '
+        'aria-label="Team performance table" tabindex="0">'
+        '<table><caption class="sr-only">Official team points and rank by gameweek; '
+        'rows marked live or review are provisional.</caption><thead><tr>'
+        '<th scope="col">GW</th><th scope="col">pts</th><th scope="col">avg</th>'
+        '<th scope="col">vs avg</th><th scope="col">rank</th></tr></thead><tbody>'
+        + "".join(body)
+        + "</tbody></table></div>"
     )
 
 
@@ -246,13 +288,13 @@ def _fmt(v: Any) -> str:
 
 def mae_table_html(mae_rows: dict[int, dict]) -> str:
     if not mae_rows:
-        return '<p class="note">No finished gameweek scored yet — the first row lands after GW1.</p>'
+        return '<p class="note">No officially verified gameweek has been scored yet.</p>'
     body = []
     for gw in sorted(mae_rows):
         m = mae_rows[gw]
         body.append(
             "<tr>"
-            f"<td>{gw}</td><td>{m['n_common']}</td>"
+            f'<th scope="row">{gw}</th><td>{m["n_common"]}</td>'
             f"<td>{_fmt(m['mae_model'])}</td><td>{_fmt(m['mae_ep_next'])}</td>"
             f"<td>{m['n_played']}</td>"
             f"<td>{_fmt(m['mae_model_played'])}</td>"
@@ -260,11 +302,16 @@ def mae_table_html(mae_rows: dict[int, dict]) -> str:
             "</tr>"
         )
     return (
-        "<table><thead><tr><th>GW</th><th>n_common</th><th>mae_model</th>"
-        "<th>mae_ep_next</th><th>n_played</th><th>mae_model_played</th>"
-        "<th>mae_ep_next_played</th></tr></thead><tbody>"
+        '<div class="table-scroll" role="region" '
+        'aria-label="Model accuracy table" tabindex="0">'
+        '<table><caption class="sr-only">Mean absolute error by officially verified '
+        'gameweek; lower is better.</caption><thead><tr>'
+        '<th scope="col">GW</th><th scope="col">n_common</th>'
+        '<th scope="col">mae_model</th><th scope="col">mae_ep_next</th>'
+        '<th scope="col">n_played</th><th scope="col">mae_model_played</th>'
+        '<th scope="col">mae_ep_next_played</th></tr></thead><tbody>'
         + "".join(body)
-        + "</tbody></table>"
+        + "</tbody></table></div>"
     )
 
 
@@ -273,17 +320,23 @@ PAGE = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="fplbench freezes Fantasy Premier League forecasts before the deadline, runs the team, and scores the model in public.">
+<meta name="theme-color" content="#07140d">
 <title>fplbench board</title>
 <style>
+  html {{ color-scheme: dark; background: #030705; }}
   html, body {{ margin: 0; padding: 0; background: #030705; color: #e8f6ec; }}
   body {{
     font-family: "Segoe UI", "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
     min-height: 100vh;
     display: flex;
     justify-content: center;
+    overflow-x: hidden;
   }}
   #board {{
-    width: 1280px;
+    --chip-w: 112px;
+    --chip-h: 78px;
+    width: min(100%, 1280px);
     min-height: 800px;
     box-sizing: border-box;
     position: relative;
@@ -297,13 +350,25 @@ PAGE = """<!DOCTYPE html>
     color: #e8f6ec;
   }}
   #board * {{ box-sizing: border-box; }}
+  .sr-only {{
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }}
   .topbar {{
-    height: 72px;
-    flex: 0 0 72px;
+    min-height: 72px;
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 18px;
-    padding: 0 20px;
+    padding: 12px 20px;
     border-bottom: 1px solid rgba(180, 220, 180, 0.12);
     background: linear-gradient(180deg, rgba(0,0,0,0.35), transparent);
   }}
@@ -315,6 +380,16 @@ PAGE = """<!DOCTYPE html>
     min-width: 132px;
   }}
   .brand b {{ display: block; color: #f3fff4; letter-spacing: 0.28em; font-size: 13px; }}
+  .live-pill {{
+    display: inline-flex;
+    margin-top: 5px;
+    padding: 3px 6px;
+    border: 1px solid rgba(125,255,195,0.3);
+    border-radius: 999px;
+    color: #7dffc3;
+    font-size: 8px;
+    letter-spacing: 0.12em;
+  }}
   .stat {{
     display: flex;
     flex-direction: column;
@@ -331,7 +406,12 @@ PAGE = """<!DOCTYPE html>
   .stat strong {{ font-size: 16px; font-variant-numeric: tabular-nums; color: #f4ffe8; }}
   .stat.gold strong {{ color: #f0c14b; }}
   .stat.lime strong {{ color: #dff36a; }}
-  .stage {{ flex: 1; display: flex; min-height: 620px; }}
+  .stage {{
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 338px;
+    min-height: 0;
+  }}
   .field-col {{
     flex: 1;
     display: flex;
@@ -343,7 +423,8 @@ PAGE = """<!DOCTYPE html>
   .pitch {{
     position: relative;
     flex: 1;
-    min-height: 460px;
+    min-height: 0;
+    aspect-ratio: 1050 / 680;
     border-radius: 18px;
     overflow: hidden;
     box-shadow:
@@ -366,9 +447,9 @@ PAGE = """<!DOCTYPE html>
   }}
   .chip {{
     position: absolute;
-    width: 112px;
-    height: 78px;
-    margin: -39px 0 0 -56px;
+    width: var(--chip-w);
+    height: var(--chip-h);
+    margin: calc(var(--chip-h) / -2) 0 0 calc(var(--chip-w) / -2);
     border: 1px solid rgba(210,255,210,0.16);
     background: rgba(6, 16, 11, 0.82);
     color: inherit;
@@ -441,19 +522,20 @@ PAGE = """<!DOCTYPE html>
       linear-gradient(180deg, #14110d, #0c0b09);
     border: 1px solid rgba(240,193,75,0.18);
   }}
-  .dugout label {{
+  .dugout-title {{
     position: absolute;
     left: 12px;
     top: 8px;
+    margin: 0;
     font-size: 10px;
+    font-weight: 600;
     letter-spacing: 0.2em;
     text-transform: uppercase;
     color: #c8b27a;
   }}
   #bench-chips {{ position: absolute; inset: 22px 8px 8px 8px; }}
   #panel {{
-    width: 338px;
-    flex: 0 0 338px;
+    min-width: 0;
     padding: 16px 18px 18px;
     background: linear-gradient(180deg, rgba(8,14,12,0.96), rgba(6,10,9,0.98));
     border-left: 1px solid rgba(180,220,180,0.12);
@@ -464,12 +546,77 @@ PAGE = """<!DOCTYPE html>
   }}
   .kicker {{
     font-size: 10px;
+    font-weight: 600;
     letter-spacing: 0.22em;
     text-transform: uppercase;
     color: #86a38c;
-    margin-top: 10px;
+    margin: 10px 0 0;
   }}
   .kicker:first-child {{ margin-top: 0; }}
+  .eyebrow {{
+    color: #7dffc3;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }}
+  #panel h2 {{
+    max-width: 13ch;
+    margin: 5px 0 4px;
+    color: #f3fff4;
+    font-size: clamp(22px, 2.2vw, 31px);
+    line-height: 1.03;
+    letter-spacing: -0.035em;
+  }}
+  .panel-intro {{
+    margin: 6px 0 10px;
+    color: #9db3a3;
+    font-size: 12px;
+    line-height: 1.5;
+  }}
+  .actions {{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+    margin: 4px 0 10px;
+  }}
+  .action {{
+    display: flex;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 10px;
+    border: 1px solid rgba(125,255,195,0.24);
+    border-radius: 8px;
+    background: rgba(125,255,195,0.06);
+    color: #b8ffcf;
+    font-size: 11px;
+    font-weight: 650;
+    text-align: center;
+    text-decoration: none;
+  }}
+  .action:hover, .action:focus-visible {{
+    border-color: rgba(223,243,106,0.75);
+    color: #dff36a;
+    outline: 2px solid #dff36a;
+    outline-offset: 2px;
+  }}
+  .legend {{
+    display: grid;
+    gap: 5px;
+    margin: 8px 0 2px;
+    color: #8fa395;
+    font-size: 10px;
+    line-height: 1.35;
+  }}
+  .legend span::before {{
+    content: "";
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 7px;
+    border: 1px solid #7dffc3;
+    border-radius: 50%;
+  }}
   table {{
     width: 100%;
     border-collapse: collapse;
@@ -490,6 +637,16 @@ PAGE = """<!DOCTYPE html>
     color: #7f9a86;
     border-top: 0;
   }}
+  .table-scroll {{
+    width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-color: #466552 transparent;
+  }}
+  .table-scroll:focus-visible {{
+    outline: 1px solid #7dffc3;
+    outline-offset: 3px;
+  }}
   .tables {{
     padding: 4px 18px 14px;
     border-top: 1px solid rgba(180,220,180,0.12);
@@ -503,13 +660,75 @@ PAGE = """<!DOCTYPE html>
   }}
   footer {{
     display: flex;
+    flex-wrap: wrap;
     gap: 22px;
     padding: 12px 20px 16px;
     border-top: 1px solid rgba(180,220,180,0.12);
     font-size: 12px;
   }}
   footer a {{ color: #9dceaa; text-decoration: none; }}
-  footer a:hover {{ color: #dff36a; }}
+  footer a:hover, footer a:focus-visible {{ color: #dff36a; }}
+  footer a:focus-visible {{ outline: 2px solid #dff36a; outline-offset: 3px; }}
+  footer .generated {{ margin-left: auto; color: #7f9486; }}
+  @media (max-width: 900px) {{
+    .stage {{ grid-template-columns: minmax(0, 1fr); }}
+    .pitch {{ aspect-ratio: 1.32; }}
+    #panel {{
+      border-top: 1px solid rgba(180,220,180,0.12);
+      border-left: 0;
+    }}
+    #panel h2 {{ max-width: none; }}
+  }}
+  @media (max-width: 600px) {{
+    #board {{
+      --chip-w: clamp(48px, 15.5vw, 58px);
+      --chip-h: 56px;
+      min-height: 100vh;
+    }}
+    .topbar {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 11px 9px;
+      padding: 14px 16px 16px;
+    }}
+    .brand {{ grid-column: 1 / -1; min-width: 0; }}
+    .stat {{ min-width: 0; }}
+    .stat em {{ font-size: 8px; letter-spacing: 0.1em; }}
+    .stat strong {{ font-size: 14px; overflow-wrap: anywhere; }}
+    .field-col {{ padding: 10px 12px 12px; gap: 9px; }}
+    .pitch {{
+      aspect-ratio: 0.78;
+      border-radius: 13px;
+    }}
+    .story {{
+      top: 8px;
+      left: 10px;
+      max-width: calc(100% - 20px);
+      font-size: 9px;
+      letter-spacing: 0.04em;
+    }}
+    .chip {{
+      padding: 6px 3px 4px 21px;
+      border-radius: 8px;
+    }}
+    .chip .nm {{ font-size: 9px; }}
+    .chip .pts {{ margin-top: 2px; font-size: 16px; }}
+    .chip .club {{ display: none; }}
+    .ring {{ left: 3px; top: 18px; width: 18px; height: 18px; }}
+    .arm {{ right: 2px; top: 2px; transform: scale(0.82); transform-origin: top right; }}
+    .dugout {{ height: 102px; flex-basis: 102px; }}
+    #bench-chips {{ inset: 22px 2px 4px; }}
+    #panel {{ padding: 18px 16px 20px; }}
+    .actions {{ margin-bottom: 14px; }}
+    .tables {{ padding: 7px 16px 16px; }}
+    footer {{ gap: 10px 16px; padding: 14px 16px 18px; }}
+    footer a {{ flex: 1 1 145px; }}
+    footer .generated {{ flex: 1 0 100%; margin-left: 0; }}
+  }}
+  @media (max-width: 360px) {{
+    .topbar {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    .actions {{ grid-template-columns: 1fr; }}
+  }}
   .scan {{
     pointer-events: none;
     position: absolute;
@@ -524,9 +743,10 @@ PAGE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<div id="board">
+<main id="board">
+  <h1 class="sr-only">fplbench live Fantasy Premier League benchmark</h1>
   <header class="topbar">
-    <div class="brand">fplbench<b>board</b></div>
+    <div class="brand">fplbench<b>board</b><span class="live-pill">GW{shown_gw} {score_status}</span></div>
     <div class="stat"><em>Showing</em><strong>GW{shown_gw}</strong></div>
     <div class="stat lime"><em>{deadline_label}</em><strong id="countdown">—</strong></div>
     <div class="stat gold"><em>Captain</em><strong>{captain}</strong></div>
@@ -536,7 +756,8 @@ PAGE = """<!DOCTYPE html>
   </header>
   <div class="stage">
     <div class="field-col">
-      <div class="pitch">
+      <h2 id="pitch-heading" class="sr-only">Current official team formation</h2>
+      <div class="pitch" aria-labelledby="pitch-heading">
         <svg class="grass" viewBox="0 0 1050 680" preserveAspectRatio="none" aria-hidden="true">
           <defs>
             <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
@@ -571,30 +792,43 @@ PAGE = """<!DOCTYPE html>
         <div id="chips">{xi_chips}</div>
       </div>
       <div class="dugout">
-        <label>Bench</label>
+        <h3 class="dugout-title">Bench</h3>
         <div id="bench-chips">{bench_chips}</div>
       </div>
     </div>
-    <aside id="panel">
+    <aside id="panel" aria-labelledby="panel-heading">
+      <div class="eyebrow">open model · public record</div>
+      <h2 id="panel-heading">Frozen before deadline. Scored after verification.</h2>
+      <p class="panel-intro">The same forecast ranks the public squad and becomes the weekly benchmark artifact. {state_note}</p>
+      <nav class="actions" aria-label="Project links">
+        <a class="action" href="{dataset_url}">Explore data</a>
+        <a class="action" href="{github_url}">Inspect code</a>
+        <a class="action" href="{results_url}">Read results</a>
+        <a class="action" href="{team_url}">Official team</a>
+      </nav>
       <div class="kicker">team performance</div>
       {team_table}
-      <p class="note">The model's own squad in the official FPL game —
-      rings show minutes played this GW, C/V mark captain and vice.
-      Regenerated from the official FPL API on every fplbench run.</p>
+      <div class="legend" aria-label="Pitch legend">
+        <span>Rings show minutes recorded this gameweek.</span>
+        <span>C, TC, and V mark captain roles.</span>
+        <span>Live and review values remain provisional.</span>
+      </div>
     </aside>
   </div>
-  <section class="tables">
-    <div class="kicker">model scoreboard — e_points_final MAE vs FPL ep_next (2026/27)</div>
+  <section class="tables" aria-labelledby="model-heading">
+    <h2 id="model-heading" class="kicker">model scoreboard — e_points_final MAE vs FPL ep_next (2026/27)</h2>
     {mae_table}
+    <p class="note">A model row is published only after FPL marks the gameweek both finished and data-checked. Lower MAE is better.</p>
   </section>
   <footer>
     <a href="{github_url}">GitHub: PascalAI2024/fplbench</a>
     <a href="{dataset_url}">HF dataset: x0me/fplbench</a>
+    <a href="{portfolio_url}">More work: PascalAI2024/portfolio</a>
     <a href="{team_url}">Official team page (entry {entry_id})</a>
-    <span style="margin-left:auto;color:#7f9486">generated {generated}</span>
+    <time class="generated" datetime="{generated_iso}">refreshed {generated}</time>
   </footer>
   <div class="scan"></div>
-</div>
+</main>
 <script>
 (function () {{
   var deadline = {deadline_js};
@@ -618,6 +852,26 @@ PAGE = """<!DOCTYPE html>
 </body>
 </html>
 """
+
+
+def validate_page(page: str) -> None:
+    """Fail closed when a generated board loses its public-surface contract."""
+    required = (
+        '<main id="board">',
+        '<h1 class="sr-only">',
+        'id="countdown"',
+        'class="table-scroll"',
+        '@media (max-width: 600px)',
+        ':focus-visible',
+        PORTFOLIO_URL,
+    )
+    missing = [token for token in required if token not in page]
+    if missing:
+        raise ValueError(f"generated board is missing required tokens: {missing}")
+    if page.count("<h1") != 1:
+        raise ValueError("generated board must contain exactly one h1")
+    if "width: 1280px" in page:
+        raise ValueError("generated board contains the retired fixed desktop width")
 
 
 def build_page(results_path: Path) -> str:
@@ -651,8 +905,32 @@ def build_page(results_path: Path) -> str:
         deadline_label = "Next deadline"
         deadline_js = "null"
 
-    return PAGE.format(
+    shown_event = next(
+        (
+            event
+            for event in bootstrap.get("events") or []
+            if int(event.get("id", -1)) == shown_gw
+        ),
+        {},
+    )
+    if shown_event.get("finished") and shown_event.get("data_checked"):
+        score_status = "verified"
+        state_note = f"GW{shown_gw} is officially data-checked."
+    elif shown_event.get("finished"):
+        score_status = "under review"
+        state_note = (
+            f"GW{shown_gw} is finished but still under official review; "
+            "points and rank remain provisional."
+        )
+    else:
+        score_status = "provisional"
+        state_note = f"GW{shown_gw} is live; points and rank remain provisional."
+
+    generated_at = dt.datetime.now(dt.timezone.utc)
+    page = PAGE.format(
         shown_gw=shown_gw,
+        score_status=html.escape(score_status),
+        state_note=html.escape(state_note),
         deadline_label=html.escape(deadline_label),
         deadline_js=deadline_js,
         captain=html.escape(str(captain)),
@@ -667,10 +945,15 @@ def build_page(results_path: Path) -> str:
         mae_table=mae_table_html(mae_rows),
         github_url=GITHUB_URL,
         dataset_url=DATASET_URL,
+        portfolio_url=PORTFOLIO_URL,
+        results_url=RESULTS_URL,
         team_url=TEAM_URL,
         entry_id=ENTRY_ID,
-        generated=dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        generated=generated_at.strftime("%Y-%m-%d %H:%M UTC"),
+        generated_iso=generated_at.isoformat(),
     )
+    validate_page(page)
+    return page
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -680,6 +963,7 @@ def main(argv: list[str] | None = None) -> None:
     args = p.parse_args(argv)
 
     page = build_page(args.results)
+    validate_page(page)
     args.out.mkdir(parents=True, exist_ok=True)
     index = args.out / "index.html"
     readme = args.out / "README.md"

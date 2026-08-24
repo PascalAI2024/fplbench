@@ -400,6 +400,8 @@ def train(panel_path: Path | None = None) -> dict:
 VAL_PRED_COLS = [
     "season",
     "GW",
+    "fixture",
+    "kickoff_time",
     "name",
     "position",
     "team",
@@ -414,6 +416,7 @@ VAL_PRED_COLS = [
     "pred_points_decomposed",
     "total_points_r5",
 ]
+VAL_PRED_KEY = ["season", "GW", "player_code", "fixture"]
 VAL_QUANTILE_COLS = ["pred_points_p10", "pred_points_p90"]
 QUANTILE_METRIC_KEYS = (
     "quantile_coverage_p10_p90",
@@ -428,6 +431,13 @@ QUANTILE_METRIC_KEYS = (
 
 def _write_val_preds(val_df: pd.DataFrame) -> None:
     PREDS.mkdir(parents=True, exist_ok=True)
+    missing = [column for column in VAL_PRED_KEY if column not in val_df.columns]
+    if missing:
+        raise ValueError(f"validation predictions missing fixture key columns: {missing}")
+    duplicate = val_df.duplicated(VAL_PRED_KEY, keep=False)
+    if duplicate.any():
+        sample = val_df.loc[duplicate, VAL_PRED_KEY].head(5).to_dict("records")
+        raise ValueError(f"validation predictions contain duplicate fixture keys: {sample}")
     # pred_defcon on GW<=28 is in-sample (DefCon train split); holdout metrics use GW>28 only.
     cols = [c for c in VAL_PRED_COLS if c in val_df.columns]
     for extra in VAL_QUANTILE_COLS:

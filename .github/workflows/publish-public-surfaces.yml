@@ -1,0 +1,134 @@
+name: publish public surfaces
+
+"on":
+  workflow_dispatch:
+    inputs:
+      publish_dataset:
+        description: "Rebuild and atomically publish corrected Parquet splits"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fplbench-hf-publication
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package
+        run: pip install -e ".[dev]"
+
+      - name: Verify repository
+        run: |
+          python -m compileall -q fplbench scripts tests
+          python -m pytest -q
+
+      - name: Build public board and card
+        run: |
+          mkdir -p "$RUNNER_TEMP/public-bundle/board"
+          python scripts/build_board.py --out "$RUNNER_TEMP/public-bundle/board"
+          python scripts/publish_hf_card.py \
+            --dry-run \
+            --output "$RUNNER_TEMP/public-bundle/dataset-card.md"
+
+      - name: Rebuild verified dataset export
+        if: inputs.publish_dataset
+        run: |
+          python -c "from fplbench.ingest import download_vaastav; download_vaastav()"
+          python -c "from fplbench.panel import build_panel, save_panel; panel = build_panel(); save_panel(panel)"
+          python -c "from fplbench.export_hf import export_hf; export_hf()"
+          mkdir -p "$RUNNER_TEMP/public-bundle/hf"
+          cp data/processed/hf/train.parquet "$RUNNER_TEMP/public-bundle/hf/"
+          cp data/processed/hf/validation.parquet "$RUNNER_TEMP/public-bundle/hf/"
+          cp data/processed/hf/features.txt "$RUNNER_TEMP/public-bundle/hf/"
+          cp data/processed/hf/manifest.json "$RUNNER_TEMP/public-bundle/hf/"
+
+      - name: Record bundle hashes
+        run: |
+          cd "$RUNNER_TEMP/public-bundle"
+          find . -type f ! -name SHA256SUMS -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > SHA256SUMS
+          cd "$GITHUB_WORKSPACE"
+          git status --porcelain
+          test -z "$(git status --porcelain)"
+
+      - name: Upload verified bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: fplbench-public-${{ github.sha }}
+          path: ${{ runner.temp }}/public-bundle
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build-verify
+    runs-on: ubuntu-latest
+    environment: hugging-face-production
+    steps:
+      - name: Checkout publisher code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Download verified bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: fplbench-public-${{ github.sha }}
+          path: ${{ runner.temp }}/public-bundle
+
+      - name: Verify bundle hashes
+        working-directory: ${{ runner.temp }}/public-bundle
+        run: sha256sum --check SHA256SUMS
+
+      - name: Publish full dataset atomically
+        if: inputs.publish_dataset
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          python scripts/publish_hf_dataset.py \
+            --dir "$RUNNER_TEMP/public-bundle/hf" \
+            --card "$RUNNER_TEMP/public-bundle/dataset-card.md"
+
+      - name: Publish dataset card atomically
+        if: ${{ !inputs.publish_dataset }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: python scripts/publish_hf_card.py --card "$RUNNER_TEMP/public-bundle/dataset-card.md"
+
+      - name: Publish Space atomically
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: python scripts/publish_space.py --dir "$RUNNER_TEMP/public-bundle/board"

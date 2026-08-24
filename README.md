@@ -1,43 +1,64 @@
+<p align="center">
+  <a href="https://huggingface.co/spaces/x0me/fplbench-board">
+    <img src="docs/img/social.png" alt="Dated preview of the fplbench Fantasy Premier League benchmark board" width="960">
+  </a>
+</p>
+
 # fplbench
 
-[![CI](https://github.com/PascalAI2024/fplbench/actions/workflows/fplbench.yml/badge.svg)](https://github.com/PascalAI2024/fplbench/actions/workflows/fplbench.yml)
+[![quality](https://github.com/PascalAI2024/fplbench/actions/workflows/quality.yml/badge.svg)](https://github.com/PascalAI2024/fplbench/actions/workflows/quality.yml)
+[![live loop](https://github.com/PascalAI2024/fplbench/actions/workflows/fplbench.yml/badge.svg)](https://github.com/PascalAI2024/fplbench/actions/workflows/fplbench.yml)
 
-**First open DefCon-aware Fantasy Premier League model** — predicts minutes, Defensive Contribution (DefCon), and points on a leakage-safe player-gameweek panel.
+Leakage-aware Fantasy Premier League player-fixture data, reproducible
+LightGBM forecasts, and a public post-gameweek scoring record.
 
-Live self-scoring: after each GW, `python scripts/score_gw.py` grades the frozen
-pre-deadline `e_points_final` forecast against official FPL actuals and appends
-a row to [`RESULTS.md`](RESULTS.md). No hand-waving — the board updates itself.
+[Live board](https://huggingface.co/spaces/x0me/fplbench-board) ·
+[Dataset](https://huggingface.co/datasets/x0me/fplbench) ·
+[Results](RESULTS.md) ·
+[Frozen forecasts](outputs/predictions/) ·
+[Official team](https://fantasy.premierleague.com/entry/4770634/history) ·
+[Portfolio](https://github.com/PascalAI2024/portfolio)
 
-GW1 deadline: **Friday 21 August 2026, 18:30 UK**.
+The operating contract is simple: generate and commit the forecast before the
+deadline, run the model's squad, then grade `e_points_final` only after FPL
+marks the gameweek both `finished` and `data_checked`.
+
+```python
+from datasets import load_dataset
+
+ds = load_dataset("x0me/fplbench")
+train, validation = ds["train"], ds["validation"]
+```
 
 ---
 
 ## Why this exists
 
-Predicting next-GW points on [vaastav](https://github.com/vaastav/Fantasy-Premier-League) CSVs is a crowded genre. Two gaps remain:
-
-1. No proper public FPL tabular dataset on Hugging Face (existing merges are schema-broken and train on post-match `xP`).
-2. Open models under-model **who plays** and **DefCon** (year 2 of the rule). Commercial tools still win on minutes; OpenFPL (arXiv:2508.09992) said so in public.
-
-This repo attacks both.
+FPL models are easy to evaluate badly. Same-gameweek statistics can leak the
+answer, double-gameweek fixtures can contaminate each other's lags, and a live
+score can move while FPL reviews the event. This project makes those boundaries
+testable and public. It models minutes, points, and Defensive Contribution
+(DefCon), publishes the historical panel, and exposes its live record.
 
 ---
 
 ## Holdout metrics (2025-26)
 
-Common mask — `total_points`, `pred_points`, last-5 baseline, and `xp_scraped` all finite. Source: [`outputs/models/val_metrics.json`](outputs/models/val_metrics.json).
+First-party historical holdout evidence, rebuilt after the DGW lag repair.
+Common mask: `total_points`, `pred_points`, last-5 baseline, and `xp_scraped`
+all finite. Source: [`outputs/models/val_metrics.json`](outputs/models/val_metrics.json).
 
 | Metric | Value | Notes |
 |--------|------:|-------|
-| **n_common** | 29 428 | rows in the fair comparison |
-| **mae_decomposed** | **0.8757** | **published** score (`pred_points_decomposed`) |
-| mae_model | 0.9740 | raw points head |
+| **n_common** | 29,417 | rows in the fair comparison |
+| **mae_decomposed** | **0.8764** | **published** score (`pred_points_decomposed`) |
+| mae_model | 0.9734 | raw points head |
 | mae_last5 | 1.0534 | rolling last-5 baseline |
 | mae_xp_scraped | 1.0683 | post-match `xP` (not a feature) |
-| mae_model_gw1 | 1.4364 | GW1-only cold start |
-| defcon_auc | 0.818 | DefCon hit probability (holdout) |
-| defcon_logloss | 0.1931 | after OOF isotonic calibration (raw 0.2436) |
-| defcon_brier | 0.0527 | after OOF isotonic calibration (raw 0.0564) |
+| mae_model_gw1 | 1.4352 | GW1-only cold start |
+| defcon_auc | 0.8193 | DefCon hit probability (holdout) |
+| defcon_logloss | 0.1942 | after OOF isotonic calibration (raw 0.2488) |
+| defcon_brier | 0.0528 | after OOF isotonic calibration (raw 0.0562) |
 
 `pred_defcon` is isotonic-calibrated on 5-fold OOF probabilities from 2025-26 GW ≤ 28 (537 positives). Holdout metrics use GW > 28 only.
 
@@ -57,9 +78,12 @@ e_points_p90           = decompose_points(pred_points_p90, pred_minutes) + 2 * p
 
 ---
 
-## TabFM vs LightGBM
+## Archived TabFM side study
 
-Same 2 500 validation rows, 94 features, stratified context. Source: [`outputs/predictions/tabfm_vs_lgbm.json`](outputs/predictions/tabfm_vs_lgbm.json).
+This pre-repair experiment used the same 2,500 validation rows, 94-feature
+context, and stratified sample. It is retained for provenance, not presented
+as a result from the corrected DGW-safe pipeline. Source:
+[`outputs/predictions/tabfm_vs_lgbm.json`](outputs/predictions/tabfm_vs_lgbm.json).
 
 | Model | MAE (all) | MAE played (n=946) | MAE haulers (n=236) |
 |-------|----------:|-------------------:|--------------------:|
@@ -70,7 +94,9 @@ Same 2 500 validation rows, 94 features, stratified context. Source: [`outputs
 
 **Caveat:** weights are [`google/tabfm-1.0.0-pytorch`](https://huggingface.co/google/tabfm-1.0.0-pytorch) under **tabfm-non-commercial-v1.0** (research only — not for commercial use). The production path in this repo is LightGBM; TabFM is a side comparison.
 
-Full-data LightGBM holdout (for context): `mae_model≈0.980` on 29 757 rows — the common-mask table above is the honest published number.
+Corrected full-validation LightGBM holdout (for context):
+`mae_model=0.9734` on 29,747 rows. The common-mask table above remains the
+published comparison.
 
 ---
 
@@ -94,7 +120,11 @@ vaastav `xP` is scraped from FPL `ep_this` **after** the gameweek. Managers did 
 - **Never train on it**
 - Used only as a contaminated baseline
 
-Every performance feature is shifted one gameweek inside `(season, player_code)`. Feature names end in `_l1`, `_r3`, `_r5`. Live comparison uses pre-deadline `ep_next`, also never fed to the model.
+Every performance feature is shifted inside `(season, player_code)`. In a
+double gameweek, both fixture rows receive the same lag values that were known
+before the gameweek's first fixture; the second fixture cannot observe the
+first. Feature names end in `_l1`, `_r3`, `_r5`. Live comparison uses
+pre-deadline `ep_next`, also never fed to the model.
 
 ---
 
@@ -110,7 +140,7 @@ Official 2025/26–2026/27 rule (live API):
 
 ---
 
-## GW1 squad
+## Frozen GW1 squad
 
 Legal 15-man squad from `outputs/predictions/gw1_2026-27.csv` (£100.0m, ≤3/club, 2/5/5/3), maximizing `e_points_final`.
 
@@ -123,7 +153,11 @@ Legal 15-man squad from `outputs/predictions/gw1_2026-27.csv` (£100.0m, ≤3/cl
 
 Full XI, bench, and constraint check: [`outputs/squad_gw1.md`](outputs/squad_gw1.md). Pitch board: [`docs/wow/gw1_pitch.html`](docs/wow/gw1_pitch.html).
 
-Social / Open Graph preview: [`docs/img/social.png`](docs/img/social.png) (Playwright screenshot of `#board` on that pitch page).
+The current GW1 prediction file is byte-identical to the forecast first
+committed [before the deadline](https://github.com/PascalAI2024/fplbench/commit/4b970a812deb997d32e48f9e48d9520b6a5ab901).
+Git history also preserves a post-deadline overwrite and the
+[explicit restoration](https://github.com/PascalAI2024/fplbench/commit/2981de109ce7b57f8ccc75ed1c011eb16886fc3a).
+The current freeze guard rejects post-deadline overwrites of an existing board.
 
 ---
 
@@ -132,14 +166,19 @@ Social / Open Graph preview: [`docs/img/social.png`](docs/img/social.png) (Playw
 | Artifact | Link |
 |----------|------|
 | Dataset | https://huggingface.co/datasets/x0me/fplbench |
-| GW1 pitch board | https://huggingface.co/spaces/x0me/fplbench-board |
-| **The model's own FPL team** | https://fantasy.premierleague.com/entry/4770634/event/1 |
+| Responsive benchmark board | https://huggingface.co/spaces/x0me/fplbench-board |
+| **The model's own FPL team** | https://fantasy.premierleague.com/entry/4770634/history |
+| Portfolio | https://github.com/PascalAI2024/portfolio |
 
-**The model plays its own picks.** The squad in [`outputs/squad_gw1.csv`](outputs/squad_gw1.md) is entered in the official FPL game as *The Leakage-Safe XI* — no manual overrides. The team page above goes live when GW1 kicks off (Fri 21 Aug 2026); its score is the model's score, against ~4.7M human managers.
+The published squad is represented by *The Leakage-Safe XI* in the official
+FPL game. Live points and rank remain provisional until FPL completes its
+review; the public board labels that state explicitly.
 
-The panel export is at `data/processed/hf/`. Weekly self-scoring of the published
-`e_points_final` forecast vs FPL's own `ep_next` lands in [`RESULTS.md`](RESULTS.md)
-(first data row after GW1).
+The corrected export contains **139,029 rows and 165 columns**: 109,282 train
+rows and 29,747 validation rows. Its fixture key, same-GW lag contract, schema,
+row counts, and SHA-256 hashes are recorded in `manifest.json`. Weekly scoring
+of the published `e_points_final` forecast vs FPL's own `ep_next` lands in
+[`RESULTS.md`](RESULTS.md) only after official verification.
 
 ---
 
@@ -147,9 +186,9 @@ The panel export is at `data/processed/hf/`. Weekly self-scoring of the publishe
 
 | Limit | Detail |
 |-------|--------|
-| **GW1 cold start** | `mae_model_gw1 = 1.4364` — no in-season form yet |
+| **GW1 cold start** | `mae_model_gw1 = 1.4352` — no in-season form yet |
 | **One DefCon season** | Labels only from 2025-26; classifier train uses GW ≤ 28, holdout GW > 28 |
-| **DGW not implemented** | Double gameweeks raise `NotImplementedError` in `predict.py` |
+| **Live DGW not implemented** | Historical DGW lags are safe; live double-gameweek prediction still raises `NotImplementedError` |
 | **TabFM non-commercial** | `google/tabfm-1.0.0-pytorch` — research license only |
 | **Set-piece orders** | `penalties_order`, `corners_and_indirect_freekicks_order`, `direct_freekicks_order` exist in vaastav `players_raw.csv` for 2021-22…2025-26, but those files are **end-of-season snapshots**. Features use **prior-season** orders by `player_code` (first season / new players → 0). Live 2026-27 uses 2025-26. Same-season snapshot values are never treated as known mid-season. |
 
@@ -186,14 +225,14 @@ scripts/
   make_charts.py    # → docs/img/*.png
   make_wow.py       # → docs/wow/gw1_pitch.html
   make_social.py    # → docs/img/social.png
-RESULTS.md          # live GW scores (first row after GW1)
+RESULTS.md          # verified GW model scores + provisional team rows
 outputs/models/     # joblibs + val_metrics.json
 outputs/predictions/
 docs/img/           # charts + social.png (pitch-board preview)
 docs/wow/           # GW1 pitch board
 ```
 
-Live score after a finished GW:
+Live score after a finished and data-checked GW:
 
 ```bash
 python scripts/score_gw.py --gw 1 --preds outputs/predictions/gw1_2026-27.csv

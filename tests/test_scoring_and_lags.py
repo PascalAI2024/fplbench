@@ -1,8 +1,14 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from fplbench.form import last_played_window, player_end_of_season_row
-from fplbench.panel import add_lags, apply_prior_season_gw1_lags, feature_columns
+from fplbench.panel import (
+    add_lags,
+    apply_prior_season_gw1_lags,
+    deduplicate_fixture_rows,
+    feature_columns,
+)
 from fplbench.predict import fill_scoring_feature_nans
 from fplbench.scoring import defcon_count, defcon_hit
 from fplbench.tabfm_head import stratified_context_indices
@@ -46,6 +52,65 @@ def test_lags_do_not_include_current_gw():
     assert out.loc[out["GW"].eq(2), "minutes_l1"].iloc[0] == 90
     assert out.loc[out["GW"].eq(3), "minutes_l1"].iloc[0] == 10
     assert out.loc[out["GW"].eq(3), "minutes_r3"].iloc[0] == 50
+
+
+def test_same_gameweek_fixtures_share_only_pre_gw_lags():
+    df = pd.DataFrame(
+        {
+            "season": ["2024-25"] * 4,
+            "player_code": ["1"] * 4,
+            "GW": [1, 2, 2, 3],
+            "fixture": [10, 21, 22, 30],
+            "minutes": [90, 10, 80, 45],
+            "total_points": [6, 1, 8, 2],
+            "position": ["MID"] * 4,
+        }
+    )
+    out = add_lags(df)
+    gw2 = out[out["GW"].eq(2)]
+    assert gw2["minutes_l1"].eq(90).all()
+    assert gw2["total_points_l1"].eq(6).all()
+    assert gw2["minutes_r3"].eq(90).all()
+    gw3 = out[out["GW"].eq(3)].iloc[0]
+    assert gw3["minutes_l1"] == 80
+    assert gw3["minutes_r3"] == 60
+    assert gw3["total_points_r3"] == 5
+
+
+def test_exact_duplicate_player_fixture_is_collapsed():
+    row = {
+        "season": "2025-26",
+        "player_code": "1",
+        "GW": 1,
+        "fixture": 10,
+        "minutes": 90,
+        "total_points": 6,
+    }
+    out = deduplicate_fixture_rows(pd.DataFrame([row, row]))
+    assert len(out) == 1
+
+
+def test_conflicting_duplicate_player_fixture_fails_closed():
+    rows = [
+        {
+            "season": "2025-26",
+            "player_code": "1",
+            "GW": 1,
+            "fixture": 10,
+            "minutes": 90,
+            "total_points": 6,
+        },
+        {
+            "season": "2025-26",
+            "player_code": "1",
+            "GW": 1,
+            "fixture": 10,
+            "minutes": 45,
+            "total_points": 2,
+        },
+    ]
+    with pytest.raises(ValueError, match="conflicting duplicate player-fixture"):
+        deduplicate_fixture_rows(pd.DataFrame(rows))
 
 
 def test_feature_list_excludes_same_gw_and_xp():

@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from scripts.score_gw import latest_final_event
+
 from fplbench.score import (
     parse_results_table,
     score_gameweek,
@@ -124,10 +126,10 @@ def test_upsert_preserves_gw1_note(tmp_path: Path):
     }
     path = tmp_path / "RESULTS.md"
     upsert_results_md(path, 1, metrics)
-    assert "first data row lands after GW1" in path.read_text(encoding="utf-8")
+    assert "Until an official gameweek is verified" in path.read_text(encoding="utf-8")
     upsert_results_md(path, 1, metrics)
     text = path.read_text(encoding="utf-8")
-    assert "first data row lands after GW1" in text
+    assert "Until an official gameweek is verified" in text
     rows = parse_results_table(text)
     assert set(rows) == {1}
     assert rows[1]["n_common"] == 10
@@ -135,7 +137,7 @@ def test_upsert_preserves_gw1_note(tmp_path: Path):
     custom = tmp_path / "custom.md"
     custom.write_text(
         "# Live scoring results\n\n"
-        "Custom keeper: the first data row lands after GW1.\n\n"
+        "Custom keeper: scores require verified official data.\n\n"
         "| GW | n_common | mae_model | mae_ep_next | n_played | mae_model_played | mae_ep_next_played |\n"
         "|---|---|---|---|---|---|---|\n",
         encoding="utf-8",
@@ -143,9 +145,19 @@ def test_upsert_preserves_gw1_note(tmp_path: Path):
     upsert_results_md(custom, 2, metrics)
     upsert_results_md(custom, 2, metrics)
     custom_text = custom.read_text(encoding="utf-8")
-    assert "first data row lands after GW1" in custom_text
+    assert "scores require verified official data" in custom_text
     assert "Custom keeper" in custom_text
     assert parse_results_table(custom_text)[2]["n_common"] == 10
+
+
+def test_latest_final_event_requires_finished_and_data_checked():
+    events = [
+        {"id": 1, "finished": True, "data_checked": False},
+        {"id": 2, "finished": False, "data_checked": True},
+        {"id": 3, "finished": True, "data_checked": True},
+    ]
+    assert latest_final_event(events) == 3
+    assert latest_final_event(events[:2]) is None
 
 
 def test_upsert_preserves_team_section_postamble(tmp_path: Path):

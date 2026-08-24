@@ -20,7 +20,7 @@ name: fplbench
     # Tuesdays 10:00 UTC — after most GWs have finished.
     - cron: "0 10 * * 2"
     # Sat/Sun/Mon 21:40 UTC — matchday scoreboard refresh after most matches
-    # (scoring self-skips unfinished GWs; team tracking + card + board pick
+    # (scoring self-skips unverified GWs; team tracking + card + board pick
     # up live points).
     - cron: "40 21 * * 6"
     - cron: "40 21 * * 0"
@@ -49,6 +49,10 @@ name: fplbench
 permissions:
   contents: write
 
+concurrency:
+  group: fplbench-live-${{ github.ref }}
+  cancel-in-progress: false
+
 defaults:
   run:
     shell: bash
@@ -58,9 +62,11 @@ jobs:
     name: pre-deadline
     runs-on: ubuntu-latest
     if: >-
-      github.event_name == 'schedule' && github.event.schedule == '0 15 * * 5'
-      || github.event_name == 'schedule' && github.event.schedule == '5 15 * * 4'
-      || github.event_name == 'workflow_dispatch' && inputs.run_pre_deadline
+      github.ref == 'refs/heads/main' && (
+        github.event_name == 'schedule' && github.event.schedule == '0 15 * * 5'
+        || github.event_name == 'schedule' && github.event.schedule == '5 15 * * 4'
+        || github.event_name == 'workflow_dispatch' && inputs.run_pre_deadline
+      )
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -104,7 +110,6 @@ jobs:
       # fresh predictions. Last on purpose: a Hub hiccup never blocks the
       # prediction commit above.
       - name: Build + publish Space board
-        if: ${{ !cancelled() }}
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
@@ -115,11 +120,13 @@ jobs:
     name: post-gw
     runs-on: ubuntu-latest
     if: >-
-      github.event_name == 'schedule' && github.event.schedule == '0 10 * * 2'
-      || github.event_name == 'schedule' && github.event.schedule == '40 21 * * 6'
-      || github.event_name == 'schedule' && github.event.schedule == '40 21 * * 0'
-      || github.event_name == 'schedule' && github.event.schedule == '40 21 * * 1'
-      || github.event_name == 'workflow_dispatch' && inputs.run_post_gw
+      github.ref == 'refs/heads/main' && (
+        github.event_name == 'schedule' && github.event.schedule == '0 10 * * 2'
+        || github.event_name == 'schedule' && github.event.schedule == '40 21 * * 6'
+        || github.event_name == 'schedule' && github.event.schedule == '40 21 * * 0'
+        || github.event_name == 'schedule' && github.event.schedule == '40 21 * * 1'
+        || github.event_name == 'workflow_dispatch' && inputs.run_post_gw
+      )
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -133,7 +140,7 @@ jobs:
       - name: Install package
         run: pip install -e .
 
-      - name: Score finished GW
+      - name: Score verified GW
         env:
           GW_INPUT: ${{ inputs.gw }}
           PREDS_INPUT: ${{ inputs.preds }}
@@ -148,13 +155,11 @@ jobs:
           fi
           python scripts/score_gw.py "${args[@]}"
 
-      # Own step so a scoring failure never blocks team tracking.
+      # Track only after scoring completed or intentionally no-op'd.
       - name: Track team performance
-        if: ${{ !cancelled() }}
         run: python scripts/track_team.py
 
       - name: Commit RESULTS.md
-        if: ${{ !cancelled() }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -169,14 +174,12 @@ jobs:
 
       # Last on purpose: scoring/team commits land even if the Hub upload fails.
       - name: Publish HF dataset card
-        if: ${{ !cancelled() }}
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python scripts/publish_hf_card.py
 
       # Regenerate + upload the living Space board (pitch, tables, countdown).
       - name: Build + publish Space board
-        if: ${{ !cancelled() }}
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |

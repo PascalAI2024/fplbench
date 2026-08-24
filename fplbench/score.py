@@ -24,12 +24,12 @@ TABLE_COLS = (
 DEFAULT_PREAMBLE = (
     "# Live scoring results\n"
     "\n"
-    "Published `e_points_final` MAE vs FPL `ep_next` after each finished "
-    "gameweek (common finite mask).\n"
+    "Published `e_points_final` MAE vs FPL `ep_next` after each gameweek is "
+    "both finished and data-checked (common finite mask).\n"
     "`e_points_final` is the frozen pre-deadline forecast used to rank the "
     "squad: minutes-gated points plus expected DefCon.\n"
     "\n"
-    "The first data row lands after GW1. Until then this table has no scores — "
+    "Until an official gameweek is verified, this table has no scores — "
     "`scripts/score_gw.py` writes them from official FPL actuals. No invented numbers."
 )
 

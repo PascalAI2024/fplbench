@@ -2,8 +2,8 @@
 
 Rewrites the `## Team — …` section of RESULTS.md from the official FPL API:
 per-GW points vs the global average, captain, overall rank, and running total.
-Idempotent — the whole section is rebuilt on every run. Only finished
-gameweeks are listed, plus the current one marked "(live)".
+Idempotent — the whole section is rebuilt on every run. Verified gameweeks
+are final; live and post-match-review rows are labeled provisional.
 
 Usage:
   python scripts/track_team.py
@@ -64,7 +64,7 @@ def _captain(entry_id: int, gw: int, names: dict[int, str]) -> str:
 
 
 def build_team_rows(entry_id: int = ENTRY_ID) -> list[dict[str, Any]]:
-    """One row per finished GW (plus the current live one) from the FPL API."""
+    """One row per visible GW, with explicit live/review/final status."""
     bootstrap = _get_json(f"{API}/bootstrap-static/")
     events = {int(e["id"]): e for e in bootstrap.get("events") or []}
     names = {int(e["id"]): e["web_name"] for e in bootstrap.get("elements") or []}
@@ -77,15 +77,19 @@ def build_team_rows(entry_id: int = ENTRY_ID) -> list[dict[str, Any]]:
         if ev is None:
             continue
         finished = bool(ev.get("finished"))
-        live = not finished and bool(ev.get("is_current"))
-        if not finished and not live:
+        data_checked = bool(ev.get("data_checked"))
+        current = bool(ev.get("is_current"))
+        if not finished and not current:
             continue
+        final = finished and data_checked
+        status = "final" if final else ("review" if finished else "live")
         avg = ev.get("average_entry_score")
         pts = h.get("points")
         rows.append(
             {
                 "gw": gw,
-                "live": live,
+                "live": status != "final",
+                "status": status,
                 "points": pts,
                 "average": avg,
                 "vs_avg": (pts - avg) if pts is not None and avg is not None else None,
@@ -102,7 +106,8 @@ def team_table_md(rows: list[dict[str, Any]]) -> str:
     sep = "|" + "|".join("---" for _ in TEAM_TABLE_COLS) + "|"
     lines = [header, sep]
     for r in sorted(rows, key=lambda x: x["gw"]):
-        gw_cell = f"{r['gw']} (live)" if r["live"] else str(r["gw"])
+        status = r.get("status") or ("live" if r["live"] else "final")
+        gw_cell = f"{r['gw']} ({status})" if status != "final" else str(r["gw"])
         vs = r["vs_avg"]
         vs_cell = "" if vs is None else (f"+{vs}" if vs > 0 else str(vs))
         rank = r["overall_rank"]
@@ -124,11 +129,11 @@ def render_section(rows: list[dict[str, Any]]) -> str:
     blurb = (
         f"The model's own squad in the official FPL game — "
         f"[live team page]({TEAM_URL}). Rewritten from the official API on "
-        f"every post-GW run; the current gameweek is marked (live) until it "
-        f"finishes."
+        f"every post-GW run. Rows remain marked live or review until FPL sets "
+        f"both `finished` and `data_checked`."
     )
     if not rows:
-        body = "No gameweek data yet — the first row lands once GW1 kicks off."
+        body = "No public team record is available yet."
     else:
         body = team_table_md(rows)
     return f"{SECTION_HEADING}\n\n{blurb}\n\n{body}"

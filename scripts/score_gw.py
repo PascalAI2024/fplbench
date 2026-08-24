@@ -1,8 +1,8 @@
-"""Score a finished GW's published forecast against official FPL actuals.
+"""Score a verified-final GW's published forecast against official FPL actuals.
 
 Usage:
   python scripts/score_gw.py --gw 1 --preds outputs/predictions/gw1_2026-27.csv
-  python scripts/score_gw.py          # auto: score the latest FINISHED GW's gw*.csv
+  python scripts/score_gw.py          # auto: score the latest verified GW's gw*.csv
   python scripts/score_gw.py --help
 """
 
@@ -36,13 +36,18 @@ def fetch_bootstrap_events() -> list[dict]:
     return r.json().get("events") or []
 
 
-def latest_finished_event(events: list[dict]) -> int | None:
-    finished = [int(e["id"]) for e in events if e.get("finished")]
-    return max(finished) if finished else None
+def latest_final_event(events: list[dict]) -> int | None:
+    """Latest GW whose official result is finished and data-checked."""
+    final = [
+        int(event["id"])
+        for event in events
+        if event.get("finished") and event.get("data_checked")
+    ]
+    return max(final) if final else None
 
 
 def fetch_event_live(gw: int) -> pd.DataFrame:
-    """Fetch element stats for a finished gameweek from the official FPL API."""
+    """Fetch element stats for a verified gameweek from the official FPL API."""
     url = EVENT_LIVE.format(gw=int(gw))
     r = requests.get(url, headers=HEADERS, timeout=60)
     r.raise_for_status()
@@ -139,16 +144,16 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = p.parse_args(argv)
 
-    # Online mode (no --actuals): guard on the official finished flag so a
-    # Tuesday run during an unfinished GW is a clean no-op, not a red X.
+    # Online mode (no --actuals): require both official finality flags so a
+    # run during live play or post-match review is a clean no-op, not a score.
     events: list[dict] | None = None
     gw_arg = args.gw
     if args.actuals is None:
         events = fetch_bootstrap_events()
         if gw_arg is None and args.preds is None:
-            latest = latest_finished_event(events)
+            latest = latest_final_event(events)
             if latest is None:
-                print("No finished gameweek yet — skipping scoring")
+                print("No verified-final gameweek yet — skipping scoring")
                 return
             gw_arg = latest
 
@@ -160,6 +165,9 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(f"GW {gw} not found in bootstrap events")
         if not ev.get("finished"):
             print(f"GW {gw} not finished — skipping scoring")
+            return
+        if not ev.get("data_checked"):
+            print(f"GW {gw} finished but not data-checked — skipping scoring")
             return
     preds = pd.read_csv(preds_path)
     actuals = load_actuals(gw, args.actuals)
