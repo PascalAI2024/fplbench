@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from fplbench.score import (
     parse_results_table,
@@ -17,7 +18,10 @@ def _preds() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "id": [1, 2, 3, 4, 5],
-            "pred_points": [6.0, 2.0, 4.0, np.nan, 1.0],
+            # Deliberately unrelated raw-head values: live scoring must grade
+            # the exact forecast used to rank and play the team.
+            "pred_points": [60.0, 20.0, 40.0, 30.0, 10.0],
+            "e_points_final": [6.0, 2.0, 4.0, np.nan, 1.0],
             "ep_next": [5.0, 3.0, np.nan, 2.0, 0.0],
         }
     )
@@ -35,8 +39,9 @@ def _actuals() -> pd.DataFrame:
 
 def test_common_mask_requires_finite_pred_ep_and_actual():
     m = score_gameweek(_preds(), _actuals())
-    # ids 1,2,5: all three finite (id 3 missing ep_next, id 4 missing pred_points)
+    # ids 1,2,5: all three finite (id 3 missing ep_next, id 4 missing final points)
     assert m["n_common"] == 3
+    assert m["prediction_column"] == "e_points_final"
     # |8-6| + |0-2| + |0-1| = 2+2+1 = 5 / 3
     assert abs(m["mae_model"] - 5.0 / 3.0) < 1e-9
     # |8-5| + |0-3| + |0-0| = 3+3+0 = 6 / 3
@@ -49,6 +54,26 @@ def test_played_only_uses_minutes_gt_zero():
     assert m["n_played"] == 1
     assert abs(m["mae_model_played"] - 2.0) < 1e-9  # |8-6|
     assert abs(m["mae_ep_next_played"] - 3.0) < 1e-9  # |8-5|
+
+
+def test_live_score_uses_final_forecast_not_raw_points_head():
+    preds = pd.DataFrame(
+        {
+            "id": [1],
+            "pred_points": [100.0],
+            "e_points_final": [7.0],
+            "ep_next": [6.0],
+        }
+    )
+    actuals = pd.DataFrame({"id": [1], "total_points": [8], "minutes": [90]})
+    metrics = score_gameweek(preds, actuals)
+    assert metrics["mae_model"] == 1.0
+    assert metrics["mae_model_played"] == 1.0
+
+
+def test_live_score_fails_closed_without_final_forecast():
+    with pytest.raises(KeyError, match="e_points_final"):
+        score_gameweek(_preds().drop(columns="e_points_final"), _actuals())
 
 
 def test_upsert_results_idempotent(tmp_path: Path):
@@ -74,6 +99,8 @@ def test_upsert_results_idempotent(tmp_path: Path):
     upsert_results_md(path, 1, m2)  # replace GW1
 
     text = path.read_text(encoding="utf-8")
+    assert "mae_model" in text
+    assert "mae_model_played" in text
     rows = parse_results_table(text)
     assert set(rows) == {1, 2}
     assert text.count("\n| 1 |") + (1 if text.startswith("| 1 |") else 0) == 1

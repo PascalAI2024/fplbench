@@ -2,7 +2,7 @@
 
 Fetches the current card from the Hub (preserving its frontmatter and dataset
 description), rebuilds the "## Live scoreboard (2026/27)" section from
-RESULTS.md (model MAE) and the official FPL API (team performance), and
+RESULTS.md (published `e_points_final` MAE) and the official FPL API (team performance), and
 uploads the card back to the Hub.
 
 The HF token is read from the HF_TOKEN environment variable ONLY and is never
@@ -136,7 +136,11 @@ def build_scoreboard(results_path: Path) -> str:
         f"({GITHUB_URL}/blob/main/.github/workflows/fplbench.yml) "
         "from official FPL actuals. No invented numbers."
     )
-    parts += ["", "### Model accuracy — MAE vs FPL `ep_next`", ""]
+    parts += [
+        "",
+        "### Model accuracy — published `e_points_final` MAE vs FPL `ep_next`",
+        "",
+    ]
     if mae_rows:
         parts.append(mae_table_md(mae_rows))
     else:

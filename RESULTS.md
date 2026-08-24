@@ -1,6 +1,8 @@
 # Live scoring results
 
-Model MAE vs FPL `ep_next` after each finished gameweek (common finite mask).
+Published `e_points_final` MAE vs FPL `ep_next` after each finished gameweek
+(common finite mask). `e_points_final` is the frozen pre-deadline forecast used
+to rank the squad: minutes-gated points plus expected DefCon.
 
 The first data row lands after GW1. Until then this table has no scores — `scripts/score_gw.py` writes them from official FPL actuals. No invented numbers.
 

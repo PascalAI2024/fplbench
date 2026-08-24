@@ -584,7 +584,7 @@ PAGE = """<!DOCTYPE html>
     </aside>
   </div>
   <section class="tables">
-    <div class="kicker">model scoreboard — MAE vs FPL ep_next (2026/27)</div>
+    <div class="kicker">model scoreboard — e_points_final MAE vs FPL ep_next (2026/27)</div>
     {mae_table}
   </section>
   <footer>

@@ -1,4 +1,4 @@
-"""Score a finished GW: join predictions to FPL event-live actuals, update RESULTS.md.
+"""Score a finished GW's published forecast against official FPL actuals.
 
 Usage:
   python scripts/score_gw.py --gw 1 --preds outputs/predictions/gw1_2026-27.csv
@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from fplbench.paths import PREDS
-from fplbench.score import score_gameweek, upsert_results_md
+from fplbench.score import LIVE_MODEL_COLUMN, score_gameweek, upsert_results_md
 
 HEADERS = {"User-Agent": "fplbench/0.1 (research; leakage-safe FPL panel)"}
 EVENT_LIVE = "https://fantasy.premierleague.com/api/event/{gw}/live/"
@@ -110,7 +110,9 @@ def resolve_gw_and_preds(gw: int | None, preds: Path | None) -> tuple[int, Path]
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(description="Post-GW model vs ep_next MAE scoring")
+    p = argparse.ArgumentParser(
+        description=f"Post-GW {LIVE_MODEL_COLUMN} vs ep_next MAE scoring"
+    )
     p.add_argument(
         "--gw",
         type=int,
@@ -165,10 +167,12 @@ def main(argv: list[str] | None = None) -> None:
     upsert_results_md(args.results, gw, metrics)
 
     print(
-        f"GW{gw} n_common={metrics['n_common']} "
-        f"mae_model={metrics['mae_model']:.4f} mae_ep_next={metrics['mae_ep_next']:.4f} "
+        f"GW{gw} prediction_column={metrics['prediction_column']} "
+        f"n_common={metrics['n_common']} "
+        f"mae_e_points_final={metrics['mae_model']:.4f} "
+        f"mae_ep_next={metrics['mae_ep_next']:.4f} "
         f"n_played={metrics['n_played']} "
-        f"mae_model_played={metrics['mae_model_played']:.4f} "
+        f"mae_e_points_final_played={metrics['mae_model_played']:.4f} "
         f"mae_ep_next_played={metrics['mae_ep_next_played']:.4f}"
     )
     print(f"preds={preds_path}")

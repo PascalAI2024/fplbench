@@ -1,4 +1,4 @@
-"""Post-GW self-scoring: model vs ep_next on a common finite mask."""
+"""Post-GW self-scoring: published model vs ep_next on a common finite mask."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
+LIVE_MODEL_COLUMN = "e_points_final"
 
 TABLE_COLS = (
     "GW",
@@ -22,7 +24,10 @@ TABLE_COLS = (
 DEFAULT_PREAMBLE = (
     "# Live scoring results\n"
     "\n"
-    "Model MAE vs FPL `ep_next` after each finished gameweek (common finite mask).\n"
+    "Published `e_points_final` MAE vs FPL `ep_next` after each finished "
+    "gameweek (common finite mask).\n"
+    "`e_points_final` is the frozen pre-deadline forecast used to rank the "
+    "squad: minutes-gated points plus expected DefCon.\n"
     "\n"
     "The first data row lands after GW1. Until then this table has no scores — "
     "`scripts/score_gw.py` writes them from official FPL actuals. No invented numbers."
@@ -38,7 +43,7 @@ def _mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 def score_gameweek(pred_df: pd.DataFrame, actuals_df: pd.DataFrame) -> dict[str, Any]:
     """Join predictions to actuals and compute MAE on a common finite mask.
 
-    Common mask: pred_points, ep_next, and actual total_points are all finite.
+    Common mask: e_points_final, ep_next, and actual total_points are all finite.
     Played-only: common mask and minutes > 0.
     """
     pred = pred_df.copy()
@@ -46,7 +51,9 @@ def score_gameweek(pred_df: pd.DataFrame, actuals_df: pd.DataFrame) -> dict[str,
     for frame, col in ((pred, "id"), (act, "id")):
         if col not in frame.columns:
             raise KeyError(f"missing join key {col!r}")
-    for col in ("pred_points", "ep_next"):
+    # Benchmark integrity: never silently substitute the raw points head. A
+    # live artifact without the published column is invalid and must stop.
+    for col in (LIVE_MODEL_COLUMN, "ep_next"):
         if col not in pred.columns:
             raise KeyError(f"predictions missing {col!r}")
     if "total_points" not in act.columns:
@@ -60,7 +67,7 @@ def score_gameweek(pred_df: pd.DataFrame, actuals_df: pd.DataFrame) -> dict[str,
     merged = pred.merge(act[keep_act].drop_duplicates("id"), on="id", how="inner")
 
     y = pd.to_numeric(merged["total_points"], errors="coerce")
-    p_model = pd.to_numeric(merged["pred_points"], errors="coerce")
+    p_model = pd.to_numeric(merged[LIVE_MODEL_COLUMN], errors="coerce")
     p_ep = pd.to_numeric(merged["ep_next"], errors="coerce")
     common = (
         y.notna()
@@ -86,6 +93,7 @@ def score_gameweek(pred_df: pd.DataFrame, actuals_df: pd.DataFrame) -> dict[str,
     e_p = p_ep.loc[played].to_numpy(dtype=float)
 
     return {
+        "prediction_column": LIVE_MODEL_COLUMN,
         "n_common": int(common.sum()),
         "mae_model": _mae(y_c, m_c),
         "mae_ep_next": _mae(y_c, e_c),

@@ -4,7 +4,9 @@
 
 **First open DefCon-aware Fantasy Premier League model** — predicts minutes, Defensive Contribution (DefCon), and points on a leakage-safe player-gameweek panel.
 
-Live self-scoring: after each GW, `python scripts/score_gw.py` joins predictions to official FPL actuals and appends a row to [`RESULTS.md`](RESULTS.md). No hand-waving — the board updates itself.
+Live self-scoring: after each GW, `python scripts/score_gw.py` grades the frozen
+pre-deadline `e_points_final` forecast against official FPL actuals and appends
+a row to [`RESULTS.md`](RESULTS.md). No hand-waving — the board updates itself.
 
 GW1 deadline: **Friday 21 August 2026, 18:30 UK**.
 
@@ -135,7 +137,9 @@ Social / Open Graph preview: [`docs/img/social.png`](docs/img/social.png) (Playw
 
 **The model plays its own picks.** The squad in [`outputs/squad_gw1.csv`](outputs/squad_gw1.md) is entered in the official FPL game as *The Leakage-Safe XI* — no manual overrides. The team page above goes live when GW1 kicks off (Fri 21 Aug 2026); its score is the model's score, against ~4.7M human managers.
 
-The panel export is at `data/processed/hf/`. Weekly self-scoring vs FPL's own `ep_next` lands in [`RESULTS.md`](RESULTS.md) (first data row after GW1).
+The panel export is at `data/processed/hf/`. Weekly self-scoring of the published
+`e_points_final` forecast vs FPL's own `ep_next` lands in [`RESULTS.md`](RESULTS.md)
+(first data row after GW1).
 
 ---
 
