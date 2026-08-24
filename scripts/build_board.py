@@ -72,7 +72,7 @@ license: other
 fullWidth: true
 header: mini
 pinned: false
-short_description: "Leakage-safe FPL forecasts, frozen before deadline and scored in public."
+short_description: "Leakage-safe FPL forecasts, frozen then scored in public."
 datasets:
   - x0me/fplbench
 tags:

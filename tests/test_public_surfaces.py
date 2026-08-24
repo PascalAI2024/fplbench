@@ -130,6 +130,13 @@ def test_space_metadata_and_workflow_safety_contracts():
     assert "app_file: index.html" in build_board.SPACE_README
     assert "fullWidth: true" in build_board.SPACE_README
     assert "license: other" in build_board.SPACE_README
+    metadata = build_board.SPACE_README.split("---", 2)[1]
+    short_description = next(
+        line.split(":", 1)[1].strip().strip('"')
+        for line in metadata.splitlines()
+        if line.startswith("short_description:")
+    )
+    assert len(short_description) <= 60
     root = Path(__file__).resolve().parents[1]
     live = (root / ".github" / "workflows" / "fplbench.yml").read_text(encoding="utf-8")
     publish = (root / ".github" / "workflows" / "publish-public-surfaces.yml").read_text(
