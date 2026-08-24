@@ -801,10 +801,10 @@ PAGE = """<!DOCTYPE html>
       <h2 id="panel-heading">Frozen before deadline. Scored after verification.</h2>
       <p class="panel-intro">The same forecast ranks the public squad and becomes the weekly benchmark artifact. {state_note}</p>
       <nav class="actions" aria-label="Project links">
-        <a class="action" href="{dataset_url}">Explore data</a>
-        <a class="action" href="{github_url}">Inspect code</a>
-        <a class="action" href="{results_url}">Read results</a>
-        <a class="action" href="{team_url}">Official team</a>
+        <a class="action" href="{dataset_url}" target="_blank" rel="noopener noreferrer">Explore data</a>
+        <a class="action" href="{github_url}" target="_blank" rel="noopener noreferrer">Inspect code</a>
+        <a class="action" href="{results_url}" target="_blank" rel="noopener noreferrer">Read results</a>
+        <a class="action" href="{team_url}" target="_blank" rel="noopener noreferrer">Official team</a>
       </nav>
       <div class="kicker">team performance</div>
       {team_table}
@@ -821,10 +821,10 @@ PAGE = """<!DOCTYPE html>
     <p class="note">A model row is published only after FPL marks the gameweek both finished and data-checked. Lower MAE is better.</p>
   </section>
   <footer>
-    <a href="{github_url}">GitHub: PascalAI2024/fplbench</a>
-    <a href="{dataset_url}">HF dataset: x0me/fplbench</a>
-    <a href="{portfolio_url}">More work: PascalAI2024/portfolio</a>
-    <a href="{team_url}">Official team page (entry {entry_id})</a>
+    <a href="{github_url}" target="_blank" rel="noopener noreferrer">GitHub: PascalAI2024/fplbench</a>
+    <a href="{dataset_url}" target="_blank" rel="noopener noreferrer">HF dataset: x0me/fplbench</a>
+    <a href="{portfolio_url}" target="_blank" rel="noopener noreferrer">More work: PascalAI2024/portfolio</a>
+    <a href="{team_url}" target="_blank" rel="noopener noreferrer">Official team page (entry {entry_id})</a>
     <time class="generated" datetime="{generated_iso}">refreshed {generated}</time>
   </footer>
   <div class="scan"></div>
@@ -870,6 +870,11 @@ def validate_page(page: str) -> None:
         raise ValueError(f"generated board is missing required tokens: {missing}")
     if page.count("<h1") != 1:
         raise ValueError("generated board must contain exactly one h1")
+    external_attrs = 'target="_blank" rel="noopener noreferrer"'
+    if page.count("<a ") != page.count(external_attrs):
+        raise ValueError(
+            "every generated board link must escape the Space iframe safely"
+        )
     if "width: 1280px" in page:
         raise ValueError("generated board contains the retired fixed desktop width")
 

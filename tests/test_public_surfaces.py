@@ -97,7 +97,21 @@ def test_board_is_responsive_accessible_and_explicitly_provisional(
     assert ':focus-visible' in page
     assert 'aria-live="polite"' not in page
     assert build_board.PORTFOLIO_URL in page
+    assert page.count("<a ") == 8
+    assert page.count('target="_blank" rel="noopener noreferrer"') == 8
+    for destination in (
+        build_board.DATASET_URL,
+        build_board.GITHUB_URL,
+        build_board.RESULTS_URL,
+        build_board.TEAM_URL,
+        build_board.PORTFOLIO_URL,
+    ):
+        assert f'href="{destination}"' in page
     build_board.validate_page(page)
+    with pytest.raises(ValueError, match="escape the Space iframe"):
+        build_board.validate_page(
+            page.replace(' target="_blank" rel="noopener noreferrer"', "", 1)
+        )
 
 
 def test_dataset_card_live_block_fails_closed():
