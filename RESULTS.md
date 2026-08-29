@@ -10,6 +10,7 @@ Until an official gameweek is verified, this table has no scores.
 
 | GW | n_common | mae_model | mae_ep_next | n_played | mae_model_played | mae_ep_next_played |
 |---|---|---|---|---|---|---|
+| 1 | 587 | 1.5686 | 1.6896 | 302 | 2.4690 | 2.1318 |
 
 ## Team — The Leakage-Safe XI (entry 4770634)
 
@@ -17,4 +18,5 @@ The model's own squad in the official FPL game — [live team page](https://fant
 
 | GW | pts | GW avg | vs avg | captain | overall rank | total pts |
 |---|---|---|---|---|---|---|
-| 1 (live) | 53 | 50 | +3 | Haaland | 3,482,299 | 53 |
+| 1 | 53 | 50 | +3 | Haaland | 3,482,299 | 53 |
+| 2 (live) | 41 | 29 | +12 | B.Fernandes | 1,476,367 | 94 |
