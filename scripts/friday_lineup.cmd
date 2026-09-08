@@ -1,6 +1,6 @@
 @echo off
-rem Weekly FPL auto-lineup — created 2026-08-22. Runs headless Claude with the
-rem scoped prompt; requires Chrome open + logged into fantasy.premierleague.com.
-cd /d C:\Users\pasca\dev\fplbench
-if not exist outputs mkdir outputs
-type scripts\friday_lineup.prompt.md | C:\Users\pasca\.local\bin\claude.exe -p --dangerously-skip-permissions >> outputs\friday_lineup_run.log 2>&1
+rem Weekly FPL auto-lineup launcher. The PowerShell runner validates Claude's
+rem explicit completion status and propagates authentication/tool failures to
+rem Windows Task Scheduler instead of returning a false success.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\pasca\dev\projects\fplbench\main\scripts\friday_lineup_runner.ps1"
+exit /b %ERRORLEVEL%

@@ -14,7 +14,6 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import requests
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -22,8 +21,8 @@ if str(ROOT) not in sys.path:
 
 from fplbench.paths import PREDS
 from fplbench.score import LIVE_MODEL_COLUMN, score_gameweek, upsert_results_md
+from scripts.track_team import _get_json
 
-HEADERS = {"User-Agent": "fplbench/0.1 (research; leakage-safe FPL panel)"}
 EVENT_LIVE = "https://fantasy.premierleague.com/api/event/{gw}/live/"
 BOOTSTRAP = "https://fantasy.premierleague.com/api/bootstrap-static/"
 DEFAULT_RESULTS = ROOT / "RESULTS.md"
@@ -31,9 +30,7 @@ _GW_IN_NAME = re.compile(r"gw(\d+)", re.IGNORECASE)
 
 
 def fetch_bootstrap_events() -> list[dict]:
-    r = requests.get(BOOTSTRAP, headers=HEADERS, timeout=60)
-    r.raise_for_status()
-    return r.json().get("events") or []
+    return _get_json(BOOTSTRAP).get("events") or []
 
 
 def latest_final_event(events: list[dict]) -> int | None:
@@ -49,9 +46,7 @@ def latest_final_event(events: list[dict]) -> int | None:
 def fetch_event_live(gw: int) -> pd.DataFrame:
     """Fetch element stats for a verified gameweek from the official FPL API."""
     url = EVENT_LIVE.format(gw=int(gw))
-    r = requests.get(url, headers=HEADERS, timeout=60)
-    r.raise_for_status()
-    elements = r.json().get("elements") or []
+    elements = _get_json(url).get("elements") or []
     rows = []
     for el in elements:
         stats = el.get("stats") or {}

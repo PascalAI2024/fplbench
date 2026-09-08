@@ -13,7 +13,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import random
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -42,10 +44,32 @@ TEAM_TABLE_COLS = (
 )
 
 
+# The FPL API returns 429/5xx around deadlines and final whistles, when the
+# scheduled runs happen to fire. A single 503 used to fail the whole board
+# build (2026-09-04), so transient statuses are retried with backoff.
+RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+MAX_ATTEMPTS = 4
+BACKOFF_BASE = 2.0
+
+
 def _get_json(url: str) -> dict:
-    r = requests.get(url, headers=HEADERS, timeout=60)
-    r.raise_for_status()
-    return r.json()
+    last: Exception | None = None
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=60)
+            if r.status_code in RETRY_STATUSES and attempt < MAX_ATTEMPTS - 1:
+                last = requests.HTTPError(f"{r.status_code} {r.reason} for {url}", response=r)
+            else:
+                r.raise_for_status()
+                return r.json()
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            last = exc
+            if attempt == MAX_ATTEMPTS - 1:
+                raise
+        delay = BACKOFF_BASE**attempt + random.uniform(0, 0.5)
+        print(f"fpl api retry {attempt + 1}/{MAX_ATTEMPTS - 1} in {delay:.1f}s: {last}", file=sys.stderr)
+        time.sleep(delay)
+    raise last if last else RuntimeError(f"unreachable: {url}")
 
 
 def _captain(entry_id: int, gw: int, names: dict[int, str]) -> str:
