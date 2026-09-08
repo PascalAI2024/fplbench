@@ -126,7 +126,12 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="authenticated /api/my-team/<id>/ JSON (required for a live run)",
     )
-    p.add_argument("--max-transfers", type=int, default=2)
+    p.add_argument(
+        "--max-transfers",
+        type=int,
+        default=None,
+        help="default: the free-transfer allowance, so a plan never costs points",
+    )
     p.add_argument(
         "--free-transfers",
         type=int,
@@ -151,13 +156,16 @@ def main(argv: list[str] | None = None) -> int:
         bank, free = 0, args.free_transfers
         approximate = True
 
+    # Free transfers cost nothing, so capping below the allowance just wastes
+    # them; capping above it invites a hit on the first ever unattended run.
+    max_transfers = args.max_transfers if args.max_transfers is not None else free
     plan = plan_with_baseline(
         board,
         owned,
         selling_prices=selling,
         bank_tenths=bank,
         free_transfers=free,
-        max_transfers=args.max_transfers,
+        max_transfers=max_transfers,
     )
     errors = sanity_check(plan, selling)
     if errors:

@@ -25,7 +25,7 @@ Never report a success status based on an intended action, a public picks page, 
    The script owns every constraint: budget from real selling prices, 3-per-club, 2/5/5/3, formation, the 4-point hit, and captain choice. If it exits non-zero, append its stderr and finish with `FPLBENCH_RUN_STATUS=FAILED`. Never substitute your own transfer or lineup reasoning for its output, and never re-run it with different flags to get a different answer.
 5. TRANSFERS. Apply the plan's `out`/`in` pairs only if ALL of these hold; otherwise make no transfer and continue to step 6:
    - `expected_gain` is strictly greater than 0 (it is already net of hits — a non-positive gain means roll the transfer),
-   - the number of transfers is at most 2,
+   - `hit_cost` is 0 — the plan must never cost points on an unattended run,
    - `approximate_selling_prices` is false,
    - every outgoing player is in the authenticated squad and every incoming player is not.
 
@@ -34,4 +34,4 @@ Never report a success status based on an intended action, a public picks page, 
 7. Append a dated entry to `C:\Users\pasca\dev\projects\fplbench\main\outputs\friday_lineup_log.md`: the transfers applied (or why none), old→new captain, lineup diffs, the plan's `expected_gain`, and the authenticated GET verification result. Delete `outputs/_my_team.json`. Do not commit or push the log.
 8. Close any browser tabs you created.
 
-Safety rails: never enter credentials anywhere (the browser session is already logged in — if it isn't, stop and log). Never touch chips, and never use a wildcard, free hit, bench boost or triple captain. Never exceed 2 transfers in one run. Never take a hit the plan did not already price in. Never modify any file except the log and `outputs/_my_team.json`. If anything is ambiguous, do nothing, log why, and finish with `FPLBENCH_RUN_STATUS=FAILED`.
+Safety rails: never enter credentials anywhere (the browser session is already logged in — if it isn't, stop and log). Never touch chips, and never use a wildcard, free hit, bench boost or triple captain. Never take a points hit: run the planner without --max-transfers so it caps itself at the free allowance, and abort if `hit_cost` is anything but 0. Never modify any file except the log and `outputs/_my_team.json`. If anything is ambiguous, do nothing, log why, and finish with `FPLBENCH_RUN_STATUS=FAILED`.
