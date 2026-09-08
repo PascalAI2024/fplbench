@@ -78,6 +78,34 @@ browser step itself, because the gate skipped before reaching it. Friday is the
 first real test. If Chrome is not running and logged into FPL at 11:35Z, step 3
 still fails by design and the XI needs setting by hand.
 
+## The automation has never applied a lineup
+
+Checked 2026-09-08. Across the whole log history there is **zero**
+`SUCCESS_CHANGED` — five entries total: one skip (no board yet), two `FAILED`
+(browser tools absent, GW2), and two gate-skips (2026-08-30 and tonight's dry
+run).
+
+- GW1 -> GW2 the team **did** change (XI, captain, vice, bench order), but both
+  automated attempts failed that week, so it was applied by hand.
+- GW2 -> GW3 **nothing changed at all** — identical XI, captain, vice and bench
+  order. The scheduled tasks last fired 2026-08-28, so no run acted for GW3;
+  FPL simply carried the GW2 lineup forward.
+
+Counting the cost of that miss, on GW3 the model's board wanted three swaps:
+bench Aina (3.31), Milenkovic (3.47), Gakpo (2.76); start Van Hecke (3.62),
+Calvert-Lewin (3.55), Evanilson (4.09), for +1.727 expected.
+
+Actual GW3 returns: out 1 + 7 + 11 = 19, in 8 + 1 + 2 = 11. **The model's
+lineup would have scored 8 points worse.** It wanted to bench Gakpo, who was
+the squad's top scorer that week at 11.
+
+That is one gameweek and proves nothing on its own, but it does mean the
+current evidence does not show lineup automation beating leaving the squad
+alone. The forecast head is strong (it beats FPL's `ep_next` on MAE); picking
+an XI from 15 owned players is a much narrower and noisier decision. Get one
+verified run, then judge it over several weeks before trusting it — and do not
+treat a failed Friday as a known loss.
+
 ## Open, not blocking
 
 - `ruff check` reports 36 pre-existing errors across the tree (28 auto-fixable).
