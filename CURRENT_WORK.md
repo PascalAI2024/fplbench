@@ -41,6 +41,11 @@ Pushed to `main`, CI green (run 34179506259).
 - `e263e42`, `357e445` — launcher test tracked, then gated on
   `shutil.which("powershell.exe")` so Linux CI stays green while both tests
   still execute on Windows.
+- Runner now `Set-Location`s to the repo root. Task Scheduler starts in
+  system32 and the rewritten `.cmd` had dropped the old `cd /d`, leaving the
+  prompt's relative git and artifact reads unanchored.
+- `tests/test_fpl_api_retry.py` pins all four retry paths. Verified by
+  mutation: forcing `MAX_ATTEMPTS = 1` turns two of them red.
 
 The three Windows scheduled tasks (`fplbench lineup thu`, `lineup fri-early`,
 `Friday lineup`) were **Disabled and pointing at the dead pre-reorg path**.
@@ -57,11 +62,21 @@ Both fixed: they are Ready and now execute
 4. Confirm afterwards that `outputs/friday_lineup_log.md` records a verified
    `SUCCESS_CHANGED` or `SUCCESS_NOOP`, not another `FAILED`.
 
-**The known blocker is unresolved.** GW2 failed twice because the
-Claude-in-Chrome tools were absent from the scheduled session and
-chrome-devtools could not substitute. Correcting the paths does not fix that.
-Unless a Chrome is left running on a dedicated profile logged into FPL with
-`--remote-debugging-port`, expect step 3 to fail and set the XI manually.
+**Dry run passed 2026-09-08 02:21Z.** `Start-ScheduledTask 'fplbench lineup thu'`
+exercised the whole chain from the new path: task -> `friday_lineup.cmd` ->
+`friday_lineup_runner.ps1` -> `claude.exe --chrome` -> prompt. The gate read GW4
+at 106.1h out, correctly skipped, wrote to `outputs/friday_lineup_log.md` in the
+right directory, emitted `SUCCESS_NOOP`, and the runner exited 0. No FPL side
+effects.
+
+**The GW2 browser failure is addressed but not yet proven.** Those runs failed
+because the Claude-in-Chrome tools were absent from the scheduled session; the
+runner now passes `--chrome` to `claude.exe`, and the three tasks run as
+`Interactive` under `pasca` (not session 0, so the extension bridge can reach
+the desktop Chrome). What the dry run could not exercise is the authenticated
+browser step itself, because the gate skipped before reaching it. Friday is the
+first real test. If Chrome is not running and logged into FPL at 11:35Z, step 3
+still fails by design and the XI needs setting by hand.
 
 ## Open, not blocking
 

@@ -1,11 +1,17 @@
 param(
     [string]$ClaudeExe = "C:\Users\pasca\.local\bin\claude.exe",
     [string]$PromptPath = "C:\Users\pasca\dev\projects\fplbench\main\scripts\friday_lineup.prompt.md",
-    [string]$OutputDir = "C:\Users\pasca\dev\projects\fplbench\main\outputs"
+    [string]$OutputDir = "C:\Users\pasca\dev\projects\fplbench\main\outputs",
+    [string]$RepoRoot = "C:\Users\pasca\dev\projects\fplbench\main"
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# Task Scheduler starts us in system32. The prompt runs git and reads
+# prediction artifacts by relative path, so anchor the cwd at the repo --
+# the launcher .cmd did this with "cd /d" before it was rewritten.
+Set-Location -LiteralPath $RepoRoot
 
 $runTimestamp = [DateTimeOffset]::Now.ToString("o")
 $lastRunPath = Join-Path $OutputDir "friday_lineup_last_run.log"

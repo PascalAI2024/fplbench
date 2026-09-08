@@ -15,6 +15,7 @@ LightGBM forecasts, and a public post-gameweek scoring record.
 [Live board](https://huggingface.co/spaces/x0me/fplbench-board) ·
 [Dataset](https://huggingface.co/datasets/x0me/fplbench) ·
 [Results](RESULTS.md) ·
+[Current work](CURRENT_WORK.md) ·
 [Frozen forecasts](outputs/predictions/) ·
 [Official team](https://fantasy.premierleague.com/entry/4770634/history) ·
 [Portfolio](https://github.com/PascalAI2024/portfolio)
