@@ -61,6 +61,9 @@ Both fixed: they are Ready and now execute
 3. Fri 09-11 07:35 local (11:35 UTC, ~25h out) is the run that should act.
 4. Confirm afterwards that `outputs/friday_lineup_log.md` records a verified
    `SUCCESS_CHANGED` or `SUCCESS_NOOP`, not another `FAILED`.
+5. GW4 is the first week transfers are in scope. Check the log names the
+   transfer applied and its `expected_gain`, and that the authenticated
+   re-GET confirmed the squad actually changed.
 
 **Dry run passed 2026-09-08 02:21Z.** `Start-ScheduledTask 'fplbench lineup thu'`
 exercised the whole chain from the new path: task -> `friday_lineup.cmd` ->
@@ -77,6 +80,28 @@ the desktop Chrome). What the dry run could not exercise is the authenticated
 browser step itself, because the gate skipped before reaching it. Friday is the
 first real test. If Chrome is not running and logged into FPL at 11:35Z, step 3
 still fails by design and the XI needs setting by hand.
+
+## Transfers are now the model's job too (2026-09-08)
+
+`fplbench/transfers.py` + `scripts/plan_transfers.py`, wired into the weekly
+prompt. The squad had been frozen on the GW1 picks all season, so "the model's
+team" was not true of the 15, only aspirationally of the 11.
+
+The ILP solves squad, XI and captain jointly against expected starting XI
+points net of the 4-point hit, using real selling prices from the
+authenticated my-team endpoint. Preview mode approximates prices from
+`now_cost` and refuses to be submitted.
+
+Live gate before any transfer POST: `expected_gain > 0`, at most 2 transfers,
+non-approximate prices, and every out/in checked against the authenticated
+squad. A failed transfer POST is never retried.
+
+**Model's GW4 opinion** (local preview board, not the committed forecast):
+transfer Gakpo out for Enzo (+2.86 net), and three lineup changes — bench Aina,
+Diop, Gross for Van Hecke, Calvert-Lewin, Evanilson. Captain B.Fernandes.
+Worth noting: the model wanted to bench Gakpo in GW3 too, and he returned 11.
+Selling him now is the same call again — conviction or blind spot, one week
+does not say which.
 
 ## The automation has never applied a lineup
 
