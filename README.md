@@ -256,3 +256,18 @@ task on the operator machine, not by CI:
 - Requires Chrome open and logged into fantasy.premierleague.com on the
   operator machine (the run uses the existing browser session; it never
   handles credentials). Each run appends to `outputs/friday_lineup_log.md`.
+
+## NFLBench feasibility spike (local)
+
+The repository also contains an isolated, non-live NFL player-week research
+slice. It validates point-in-time cutoffs, rejects same-week outcome leakage,
+retains frozen DNPs as zero-point outcomes, computes fixed PPR targets, builds
+EWMA/position-median baselines, and hashes canonical forecast artifacts.
+
+```bash
+python scripts/build_nflbench_sample.py
+```
+
+See [`docs/NFLBENCH.md`](docs/NFLBENCH.md). The deterministic sample uses only
+synthetic fixtures. It does not scrape NFL.com, use paid data, publish, or
+claim real model performance.

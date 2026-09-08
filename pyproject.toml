@@ -23,4 +23,4 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.setuptools.packages.find]
-include = ["fplbench*"]
+include = ["fplbench*", "nflbench*"]

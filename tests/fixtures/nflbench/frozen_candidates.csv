@@ -1,0 +1,9 @@
+season,week,player_id,player_name,position,team,opponent,observed_at,source_revision
+2025,5,QB_A,Alex Arm,QB,AAA,FFF,2025-09-24T20:00:00Z,sample-roster-w5-r1
+2025,5,QB_NEW,Quinn New,QB,FFF,AAA,2025-09-24T20:00:00Z,sample-roster-w5-r1
+2025,5,RB_A,Riley Burst,RB,AAA,FFF,2025-09-24T20:00:00Z,sample-roster-w5-r1
+2025,5,RB_NEW,Robin New,RB,FFF,AAA,2025-09-24T20:00:00Z,sample-roster-w5-r1
+2025,5,WR_A,Will Route,WR,AAA,FFF,2025-09-24T20:00:00Z,sample-roster-w5-r1
+2025,5,WR_DNP,Winter Rest,WR,FFF,AAA,2025-09-24T20:00:00Z,sample-roster-w5-r1
+2025,5,TE_A,Taylor Edge,TE,AAA,FFF,2025-09-24T20:00:00Z,sample-roster-w5-r1
+

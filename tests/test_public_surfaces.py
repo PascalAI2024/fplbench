@@ -9,7 +9,7 @@ import pytest
 
 from fplbench import train
 from fplbench.export_hf import validate_split
-from scripts import build_board, publish_hf_card, track_team
+from scripts import build_board, publish_hf_card, publish_space, track_team
 
 
 def _bootstrap() -> dict:
@@ -97,8 +97,9 @@ def test_board_is_responsive_accessible_and_explicitly_provisional(
     assert ':focus-visible' in page
     assert 'aria-live="polite"' not in page
     assert build_board.PORTFOLIO_URL in page
-    assert page.count("<a ") == 8
+    assert page.count("<a ") == 9
     assert page.count('target="_blank" rel="noopener noreferrer"') == 8
+    assert 'href="teams/test/index.html"' in page
     for destination in (
         build_board.DATASET_URL,
         build_board.GITHUB_URL,
@@ -112,6 +113,110 @@ def test_board_is_responsive_accessible_and_explicitly_provisional(
         build_board.validate_page(
             page.replace(' target="_blank" rel="noopener noreferrer"', "", 1)
         )
+
+
+def test_site_builds_exact_index_plus_twenty_club_pages_with_no_broken_links(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    bootstrap = _bootstrap()
+    bootstrap["teams"] = [
+        {"id": team_id, "short_name": f"T{team_id:02d}", "name": f"Team {team_id:02d}"}
+        for team_id in range(1, 21)
+    ]
+    bootstrap["elements"] = [
+        {
+            "id": team_id,
+            "web_name": f"Player {team_id:02d}",
+            "element_type": 3,
+            "team": team_id,
+            "now_cost": 50 + team_id,
+            "total_points": team_id,
+            "selected_by_percent": "1.0",
+            "status": "a",
+        }
+        for team_id in range(1, 21)
+    ]
+    monkeypatch.setattr(build_board, "fetch_bootstrap", lambda: bootstrap)
+    monkeypatch.setattr(build_board, "fetch_fixtures", lambda: [])
+    monkeypatch.setattr(build_board, "fetch_picks", lambda _entry, _ctx: (1, _picks()))
+    monkeypatch.setattr(
+        build_board,
+        "fetch_live_points",
+        lambda _gw: {team_id: {"points": team_id, "minutes": 90} for team_id in range(1, 21)},
+    )
+    monkeypatch.setattr(
+        build_board,
+        "build_team_rows",
+        lambda: [
+            {
+                "gw": 1,
+                "live": True,
+                "status": "review",
+                "points": 53,
+                "average": 36,
+                "vs_avg": 17,
+                "captain": "Player 10",
+                "overall_rank": 123456,
+                "total_points": 53,
+            }
+        ],
+    )
+
+    site = build_board.build_site(tmp_path / "missing-results.md")
+    teams = build_board.official_teams(bootstrap)
+    assert len(site) == 21
+    assert len([path for path in site if path.name == "index.html"]) == 21
+    assert Path("index.html") in site
+    assert Path("teams/team-01/index.html") in site
+    assert Path("teams/team-20/index.html") in site
+    build_board.validate_site(site, teams)
+
+    for team in teams:
+        page = site[Path("teams") / team["slug"] / "index.html"]
+        assert f'data-team-id="{team["id"]}"' in page
+        assert 'data-field="player-count"' in page
+        assert "Preview, not a model score." in page
+        assert "provisional GW1 values" in page
+        assert "@media (max-width: 720px)" in page
+        assert page.count('aria-label="All club preview pages"') == 1
+
+    broken = dict(site)
+    broken[Path("index.html")] = broken[Path("index.html")].replace(
+        'teams/team-01/index.html', 'teams/missing/index.html', 1
+    )
+    with pytest.raises(ValueError, match="broken local links"):
+        build_board.validate_site(broken, teams)
+
+
+def test_verified_club_page_labels_final_gameweek_values() -> None:
+    bootstrap = _bootstrap()
+    bootstrap["events"][0]["data_checked"] = True
+    teams = build_board.official_teams(bootstrap)
+    page = build_board.build_team_page(
+        teams[0],
+        teams,
+        bootstrap,
+        [],
+        1,
+        {1: {"points": 3, "minutes": 90}},
+        build_board.dt.datetime(2026, 9, 1, tzinfo=build_board.dt.timezone.utc),
+    )
+    assert "GW1 verified" in page
+    assert "verified GW1 points" in page
+    assert "GW1 points and minutes are final" in page
+    assert "provisional GW1 values" not in page
+
+
+def test_space_upload_inventory_includes_every_generated_club_page(tmp_path: Path):
+    (tmp_path / "index.html").write_text("index", encoding="utf-8")
+    for team_id in range(1, 21):
+        page = tmp_path / "teams" / f"team-{team_id:02d}" / "index.html"
+        page.parent.mkdir(parents=True)
+        page.write_text(str(team_id), encoding="utf-8")
+    uploads = publish_space.generated_site_uploads(tmp_path)
+    assert len(uploads) == 21
+    assert uploads[0][1] == "index.html"
+    assert uploads[-1][1] == "teams/team-20/index.html"
 
 
 def test_dataset_card_live_block_fails_closed():

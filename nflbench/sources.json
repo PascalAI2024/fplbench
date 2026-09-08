@@ -1,0 +1,39 @@
+{
+  "benchmark": "NFLBench feasibility spike",
+  "policy": {
+    "commercial_status": "research-only until source and marks review is complete",
+    "injury_features": "excluded from version 0",
+    "nfl_com_automation": "not used in version 0 pending a source-specific legal and operational review",
+    "redistribution": "publish only derived benchmark artifacts whose upstream terms permit it"
+  },
+  "sources": [
+    {
+      "id": "nflverse_data",
+      "purpose": "historical player-week statistics, schedules, rosters, and depth charts",
+      "status": "approved for feasibility",
+      "license": "CC-BY-4.0 for nflverse-data releases; retain attribution and source revision",
+      "url": "https://github.com/nflverse/nflverse-data"
+    },
+    {
+      "id": "sleeper_api",
+      "purpose": "optional player identity and fantasy metadata; not used by the deterministic sample",
+      "status": "conditional",
+      "license": "free for non-commercial use; contact Sleeper for commercial licensing; cache player map and call at most daily",
+      "url": "https://docs.sleeper.com/"
+    },
+    {
+      "id": "nfl_fantasy_rules",
+      "purpose": "reference for the fixed PPR scoring contract",
+      "status": "reference-only",
+      "license": "reference use only in version 0; no automated retrieval or redistribution",
+      "url": "https://static.www.nfl.com/image/upload/v1745955215/league/apps/fantasy/media/rules/OfficialRules2025.pdf"
+    },
+    {
+      "id": "nfl_com",
+      "purpose": "public reference pages only; not used by the feasibility pipeline",
+      "status": "not used in version 0 pending source-specific review",
+      "license": "public accessibility is relevant to CFAA authorization but is not blanket permission; review terms, copyright, rate limits, technical controls, privacy, state law, and downstream use before automation",
+      "url": "https://www.nfl.com/legal/terms/"
+    }
+  ]
+}

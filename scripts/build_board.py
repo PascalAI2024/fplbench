@@ -9,11 +9,13 @@ dark-pitch visual identity of the original hand-made GW1 board:
   latest GW whose picks are available and labels which GW is shown),
 - team performance table (same data as scripts/track_team.py),
 - model scoreboard (per-GW MAE rows parsed from RESULTS.md),
+- one responsive provisional data preview for every official FPL club,
 - footer links (GitHub repo, HF dataset, official team page).
 
 Everything is rendered server-side in Python; the only JS on the page is the
-countdown ticker. Output: outputs/board/index.html + outputs/board/README.md
-(upload with scripts/publish_space.py).
+countdown ticker. Output: outputs/board/index.html,
+outputs/board/teams/<slug>/index.html, and outputs/board/README.md (upload with
+scripts/publish_space.py).
 
 Usage:
   python scripts/build_board.py
@@ -25,7 +27,11 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import html
+import posixpath
+import re
 import sys
+import unicodedata
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -93,6 +99,7 @@ real team, and scored after each officially verified gameweek.
 - [Inspect the code and frozen forecasts](https://github.com/PascalAI2024/fplbench)
 - [Read the public score record](https://github.com/PascalAI2024/fplbench/blob/main/RESULTS.md)
 - [View the model's official FPL team](https://fantasy.premierleague.com/entry/4770634/history)
+- Browse the current official club previews from the board's club navigation.
 
 The board is regenerated from public FPL data by
 [`scripts/build_board.py`](https://github.com/PascalAI2024/fplbench/blob/main/scripts/build_board.py).
@@ -106,6 +113,15 @@ published only when FPL marks the gameweek both `finished` and `data_checked`.
 
 def fetch_bootstrap() -> dict:
     return _get_json(f"{API}/bootstrap-static/")
+
+
+def fetch_fixtures() -> list[dict[str, Any]]:
+    """Current official fixture list; fail soft for preview-only team pages."""
+    try:
+        payload = _get_json(f"{API}/fixtures/")
+    except requests.RequestException:
+        return []
+    return payload if isinstance(payload, list) else []
 
 
 def gw_context(bootstrap: dict) -> dict[str, Any]:
@@ -181,6 +197,59 @@ def build_squad(bootstrap: dict, picks: dict, live: dict[int, dict[str, Any]]) -
             }
         )
     return squad
+
+
+def team_slug(team: dict[str, Any]) -> str:
+    """Stable, URL-safe season slug derived from the official team name."""
+    raw = str(team.get("name") or team.get("short_name") or team.get("id") or "team")
+    ascii_name = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode()
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_name.lower()).strip("-")
+    return slug or f"team-{int(team.get('id') or 0)}"
+
+
+def official_teams(bootstrap: dict) -> list[dict[str, Any]]:
+    """Official clubs in deterministic display order with unique stable slugs."""
+    teams = sorted(
+        (dict(team) for team in bootstrap.get("teams") or []),
+        key=lambda team: (str(team.get("name") or "").casefold(), int(team.get("id") or 0)),
+    )
+    seen: dict[str, int] = {}
+    for team in teams:
+        base = team_slug(team)
+        seen[base] = seen.get(base, 0) + 1
+        team["slug"] = base if seen[base] == 1 else f"{base}-{int(team.get('id') or seen[base])}"
+    return teams
+
+
+def club_nav_html(teams: list[dict[str, Any]], *, from_team_page: bool = False) -> str:
+    """Links to every generated club preview from the board or a club page."""
+    links = []
+    for team in teams:
+        slug = str(team["slug"])
+        href = f"../{slug}/index.html" if from_team_page else f"teams/{slug}/index.html"
+        links.append(
+            f'<a class="club-link" href="{href}">'
+            f'{html.escape(str(team.get("short_name") or team.get("name") or slug))}</a>'
+        )
+    return "".join(links)
+
+
+class _LinkParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.links: list[dict[str, str]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "a":
+            return
+        values = {key: value or "" for key, value in attrs}
+        self.links.append(values)
+
+
+def page_links(page: str) -> list[dict[str, str]]:
+    parser = _LinkParser()
+    parser.feed(page)
+    return parser.links
 
 
 # ---------------------------------------------------------------- rendering
@@ -652,6 +721,36 @@ PAGE = """<!DOCTYPE html>
     border-top: 1px solid rgba(180,220,180,0.12);
     background: linear-gradient(180deg, rgba(0,0,0,0.25), transparent);
   }}
+  .clubs {{
+    padding: 8px 18px 18px;
+    border-top: 1px solid rgba(180,220,180,0.12);
+  }}
+  .club-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+    gap: 7px;
+    margin-top: 10px;
+  }}
+  .club-link {{
+    display: flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: center;
+    padding: 7px;
+    border: 1px solid rgba(125,255,195,0.18);
+    border-radius: 8px;
+    color: #b8ffcf;
+    background: rgba(125,255,195,0.04);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-decoration: none;
+  }}
+  .club-link:hover, .club-link:focus-visible {{
+    color: #dff36a;
+    border-color: rgba(223,243,106,0.75);
+    outline: 2px solid #dff36a;
+    outline-offset: 2px;
+  }}
   .note {{
     font-size: 11px;
     line-height: 1.45;
@@ -721,6 +820,8 @@ PAGE = """<!DOCTYPE html>
     #panel {{ padding: 18px 16px 20px; }}
     .actions {{ margin-bottom: 14px; }}
     .tables {{ padding: 7px 16px 16px; }}
+    .clubs {{ padding: 8px 16px 18px; }}
+    .club-grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
     footer {{ gap: 10px 16px; padding: 14px 16px 18px; }}
     footer a {{ flex: 1 1 145px; }}
     footer .generated {{ flex: 1 0 100%; margin-left: 0; }}
@@ -820,6 +921,11 @@ PAGE = """<!DOCTYPE html>
     {mae_table}
     <p class="note">A model row is published only after FPL marks the gameweek both finished and data-checked. Lower MAE is better.</p>
   </section>
+  <section class="clubs" aria-labelledby="clubs-heading">
+    <h2 id="clubs-heading" class="kicker">club previews — current official FPL data</h2>
+    <p class="note">One responsive preview per official club. Live and review values remain provisional and are not model scores.</p>
+    <nav class="club-grid" aria-label="Club preview pages">{club_nav}</nav>
+  </section>
   <footer>
     <a href="{github_url}" target="_blank" rel="noopener noreferrer">GitHub: PascalAI2024/fplbench</a>
     <a href="{dataset_url}" target="_blank" rel="noopener noreferrer">HF dataset: x0me/fplbench</a>
@@ -854,6 +960,197 @@ PAGE = """<!DOCTYPE html>
 """
 
 
+TEAM_PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Current Fantasy Premier League club data preview for {team_name}.">
+<meta name="theme-color" content="#07140d">
+<title>{team_name} · fplbench club preview</title>
+<style>
+  html {{ color-scheme: dark; background: #030705; }}
+  * {{ box-sizing: border-box; }}
+  body {{ margin: 0; min-height: 100vh; background: #030705; color: #e8f6ec; font-family: "Segoe UI", system-ui, sans-serif; }}
+  .shell {{ width: min(100%, 1100px); margin: 0 auto; min-height: 100vh; padding: 24px; background: radial-gradient(800px 360px at 10% 0, rgba(80,160,90,.2), transparent 60%), #07140d; }}
+  .back, .club-link {{ color: #b8ffcf; text-decoration: none; }}
+  .back:hover, .back:focus-visible, .club-link:hover, .club-link:focus-visible {{ color: #dff36a; outline: 2px solid #dff36a; outline-offset: 3px; }}
+  header {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: end; padding: 24px 0; border-bottom: 1px solid rgba(180,220,180,.15); }}
+  .eyebrow, .label {{ color: #86a38c; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; }}
+  h1 {{ margin: 7px 0 0; font-size: clamp(32px, 7vw, 64px); line-height: .95; letter-spacing: -.045em; }}
+  .status {{ align-self: start; padding: 7px 10px; border: 1px solid rgba(240,193,75,.45); border-radius: 999px; color: #f0c14b; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }}
+  .notice {{ margin: 18px 0; padding: 14px 16px; border-left: 3px solid #f0c14b; background: rgba(240,193,75,.08); color: #d8cfb4; line-height: 1.5; }}
+  .metrics {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }}
+  .metric {{ min-height: 90px; padding: 14px; border: 1px solid rgba(180,220,180,.12); border-radius: 12px; background: rgba(6,16,11,.78); }}
+  .metric strong {{ display: block; margin-top: 7px; color: #f4ffe8; font-size: 20px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }}
+  h2 {{ margin: 28px 0 10px; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: #9dceaa; }}
+  .table-scroll {{ overflow-x: auto; border: 1px solid rgba(180,220,180,.12); border-radius: 12px; }}
+  .table-scroll:focus-visible {{ outline: 2px solid #dff36a; outline-offset: 3px; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }}
+  th, td {{ padding: 10px; text-align: right; border-top: 1px solid rgba(180,220,180,.1); white-space: nowrap; }}
+  thead th {{ border-top: 0; color: #7f9a86; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }}
+  th:first-child, td:first-child {{ text-align: left; }}
+  .player {{ color: #f4ffe8; font-weight: 650; }}
+  .club-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 7px; margin: 12px 0 24px; }}
+  .club-link {{ display: flex; min-height: 34px; align-items: center; justify-content: center; padding: 7px; border: 1px solid rgba(125,255,195,.18); border-radius: 8px; background: rgba(125,255,195,.04); font-size: 10px; }}
+  footer {{ display: flex; flex-wrap: wrap; gap: 16px; padding-top: 18px; border-top: 1px solid rgba(180,220,180,.12); color: #7f9486; font-size: 11px; }}
+  footer time {{ margin-left: auto; }}
+  @media (max-width: 720px) {{
+    .shell {{ padding: 18px 14px; }}
+    header {{ grid-template-columns: 1fr; align-items: start; }}
+    .status {{ justify-self: start; }}
+    .metrics {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    .club-grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+    footer time {{ flex-basis: 100%; margin-left: 0; }}
+  }}
+  @media (max-width: 380px) {{ .metrics {{ grid-template-columns: 1fr; }} .club-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }} }}
+</style>
+</head>
+<body>
+<main class="shell" data-team-id="{team_id}" data-team-slug="{team_slug}">
+  <a class="back" href="../../index.html">← Main benchmark board</a>
+  <header>
+    <div><div class="eyebrow">fplbench · official club data preview</div><h1>{team_name}</h1></div>
+    <div class="status">GW{preview_gw} {preview_status}</div>
+  </header>
+  <p class="notice"><strong>Preview, not a model score.</strong> {preview_notice}</p>
+  <section class="metrics" aria-label="Club preview summary">
+    <div class="metric" data-field="short-name"><span class="label">Club code</span><strong>{short_name}</strong></div>
+    <div class="metric" data-field="player-count"><span class="label">Listed players</span><strong>{player_count}</strong></div>
+    <div class="metric" data-field="average-cost"><span class="label">Average price</span><strong>{average_cost}</strong></div>
+    <div class="metric" data-field="next-fixture"><span class="label">Next fixture</span><strong>{next_fixture}</strong></div>
+  </section>
+  <section aria-labelledby="roster-heading">
+    <h2 id="roster-heading">Current FPL roster · {roster_value_status}</h2>
+    <div class="table-scroll" role="region" aria-label="{team_name} player table" tabindex="0">
+      <table><thead><tr><th scope="col">Player</th><th scope="col">Pos</th><th scope="col">Price</th><th scope="col">Season pts</th><th scope="col">GW pts</th><th scope="col">Minutes</th><th scope="col">Selected</th><th scope="col">Status</th></tr></thead><tbody>{roster_rows}</tbody></table>
+    </div>
+  </section>
+  <section aria-labelledby="club-nav-heading"><h2 id="club-nav-heading">All club previews</h2><nav class="club-grid" aria-label="All club preview pages">{club_nav}</nav></section>
+  <footer><a class="back" href="{github_url}" target="_blank" rel="noopener noreferrer">Source code</a><a class="back" href="{dataset_url}" target="_blank" rel="noopener noreferrer">Dataset</a><time datetime="{generated_iso}">refreshed {generated}</time></footer>
+</main>
+</body>
+</html>
+"""
+
+
+def _event_status(bootstrap: dict, gw: int) -> str:
+    event = next(
+        (item for item in bootstrap.get("events") or [] if int(item.get("id") or -1) == gw),
+        {},
+    )
+    return "verified" if event.get("finished") and event.get("data_checked") else "provisional preview"
+
+
+def _next_fixture_text(
+    team: dict[str, Any], teams: list[dict[str, Any]], fixtures: list[dict[str, Any]]
+) -> str:
+    team_id = int(team.get("id") or 0)
+    names = {int(item.get("id") or 0): str(item.get("short_name") or item.get("name") or "—") for item in teams}
+    candidates = [
+        fixture
+        for fixture in fixtures
+        if not fixture.get("finished")
+        and team_id in (int(fixture.get("team_h") or 0), int(fixture.get("team_a") or 0))
+    ]
+    if not candidates:
+        return "—"
+    fixture = min(
+        candidates,
+        key=lambda item: (
+            str(item.get("kickoff_time") or "9999"),
+            int(item.get("id") or 0),
+        ),
+    )
+    home = int(fixture.get("team_h") or 0) == team_id
+    opponent = int(fixture.get("team_a") if home else fixture.get("team_h") or 0)
+    return f"{'vs' if home else '@'} {names.get(opponent, '—')}"
+
+
+def _roster_rows(
+    team_id: int, bootstrap: dict, live: dict[int, dict[str, Any]]
+) -> tuple[str, int, str]:
+    players = [
+        dict(player)
+        for player in bootstrap.get("elements") or []
+        if int(player.get("team") or 0) == team_id
+    ]
+    players.sort(
+        key=lambda player: (
+            int(player.get("element_type") or 9),
+            -int(player.get("total_points") or 0),
+            str(player.get("web_name") or "").casefold(),
+        )
+    )
+    rows = []
+    for player in players:
+        player_id = int(player.get("id") or 0)
+        stats = live.get(player_id) or {}
+        availability = str(player.get("status") or "a").upper()
+        rows.append(
+            "<tr>"
+            f'<th class="player" scope="row">{html.escape(str(player.get("web_name") or f"#{player_id}"))}</th>'
+            f'<td>{POS_BY_TYPE.get(int(player.get("element_type") or 0), "—")}</td>'
+            f'<td>£{float(player.get("now_cost") or 0) / 10:.1f}m</td>'
+            f'<td>{int(player.get("total_points") or 0)}</td>'
+            f'<td>{"—" if stats.get("points") is None else stats.get("points")}</td>'
+            f'<td>{"—" if stats.get("minutes") is None else stats.get("minutes")}</td>'
+            f'<td>{html.escape(str(player.get("selected_by_percent") or "—"))}%</td>'
+            f'<td>{html.escape(availability)}</td>'
+            "</tr>"
+        )
+    costs = [float(player.get("now_cost") or 0) / 10 for player in players]
+    average_cost = "—" if not costs else f"£{sum(costs) / len(costs):.1f}m"
+    return "".join(rows), len(players), average_cost
+
+
+def build_team_page(
+    team: dict[str, Any],
+    teams: list[dict[str, Any]],
+    bootstrap: dict,
+    fixtures: list[dict[str, Any]],
+    preview_gw: int,
+    live: dict[int, dict[str, Any]],
+    generated_at: dt.datetime,
+) -> str:
+    team_id = int(team.get("id") or 0)
+    roster_rows, player_count, average_cost = _roster_rows(team_id, bootstrap, live)
+    event_status = _event_status(bootstrap, preview_gw)
+    if event_status == "verified":
+        preview_notice = (
+            f"GW{preview_gw} points and minutes are final; roster, price, availability, "
+            "and fixture metadata reflect the latest public FPL snapshot."
+        )
+        roster_value_status = f"verified GW{preview_gw} points"
+    else:
+        preview_notice = (
+            "Current and review-period values can change until FPL marks the "
+            "gameweek both finished and data-checked."
+        )
+        roster_value_status = f"provisional GW{preview_gw} values"
+    page = TEAM_PAGE.format(
+        team_id=team_id,
+        team_slug=html.escape(str(team["slug"]), quote=True),
+        team_name=html.escape(str(team.get("name") or team["slug"])),
+        short_name=html.escape(str(team.get("short_name") or "—")),
+        preview_gw=preview_gw,
+        preview_status=html.escape(event_status),
+        preview_notice=html.escape(preview_notice),
+        roster_value_status=html.escape(roster_value_status),
+        player_count=player_count,
+        average_cost=average_cost,
+        next_fixture=html.escape(_next_fixture_text(team, teams, fixtures)),
+        roster_rows=roster_rows,
+        club_nav=club_nav_html(teams, from_team_page=True),
+        github_url=GITHUB_URL,
+        dataset_url=DATASET_URL,
+        generated=generated_at.strftime("%Y-%m-%d %H:%M UTC"),
+        generated_iso=generated_at.isoformat(),
+    )
+    validate_team_page(page, team)
+    return page
+
+
 def validate_page(page: str) -> None:
     """Fail closed when a generated board loses its public-surface contract."""
     required = (
@@ -864,23 +1161,93 @@ def validate_page(page: str) -> None:
         '@media (max-width: 600px)',
         ':focus-visible',
         PORTFOLIO_URL,
+        'aria-label="Club preview pages"',
     )
     missing = [token for token in required if token not in page]
     if missing:
         raise ValueError(f"generated board is missing required tokens: {missing}")
     if page.count("<h1") != 1:
         raise ValueError("generated board must contain exactly one h1")
-    external_attrs = 'target="_blank" rel="noopener noreferrer"'
-    if page.count("<a ") != page.count(external_attrs):
-        raise ValueError(
-            "every generated board link must escape the Space iframe safely"
-        )
+    for link in page_links(page):
+        href = link.get("href", "")
+        if href.startswith(("https://", "http://")) and (
+            link.get("target") != "_blank"
+            or link.get("rel") != "noopener noreferrer"
+        ):
+            raise ValueError("every external board link must escape the Space iframe safely")
     if "width: 1280px" in page:
         raise ValueError("generated board contains the retired fixed desktop width")
 
 
-def build_page(results_path: Path) -> str:
-    bootstrap = fetch_bootstrap()
+def validate_team_page(page: str, team: dict[str, Any]) -> None:
+    required = (
+        '<main class="shell"',
+        f'data-team-id="{int(team.get("id") or 0)}"',
+        f'data-team-slug="{team["slug"]}"',
+        "Preview, not a model score.",
+        'data-field="short-name"',
+        'data-field="player-count"',
+        'data-field="average-cost"',
+        'data-field="next-fixture"',
+        'id="roster-heading"',
+        'aria-label="All club preview pages"',
+        '@media (max-width: 720px)',
+    )
+    missing = [token for token in required if token not in page]
+    if missing:
+        raise ValueError(f"generated club page is missing required tokens: {missing}")
+    if page.count("<h1") != 1:
+        raise ValueError("generated club page must contain exactly one h1")
+    for link in page_links(page):
+        href = link.get("href", "")
+        if href.startswith(("https://", "http://")) and (
+            link.get("target") != "_blank"
+            or link.get("rel") != "noopener noreferrer"
+        ):
+            raise ValueError("every external club-page link must escape the Space iframe safely")
+
+
+def _resolved_local_link(source: Path, href: str) -> str | None:
+    if not href or href.startswith(("https://", "http://", "mailto:", "#")):
+        return None
+    clean = href.split("#", 1)[0].split("?", 1)[0]
+    if not clean:
+        return None
+    resolved = posixpath.normpath(posixpath.join(source.parent.as_posix(), clean))
+    if resolved.endswith("/"):
+        resolved += "index.html"
+    return resolved
+
+
+def validate_site(site: dict[Path, str], teams: list[dict[str, Any]]) -> None:
+    """Validate exact page inventory and every generated local navigation link."""
+    expected = {Path("index.html"), *(Path("teams") / str(team["slug"]) / "index.html" for team in teams)}
+    if set(site) != expected:
+        missing = sorted(str(path) for path in expected - set(site))
+        extra = sorted(str(path) for path in set(site) - expected)
+        raise ValueError(f"generated site page inventory mismatch: missing={missing}, extra={extra}")
+    if len(site) != len(teams) + 1:
+        raise ValueError("generated site must contain one index plus exactly one page per club")
+    available = {path.as_posix() for path in site}
+    broken: list[str] = []
+    for source, page in site.items():
+        for link in page_links(page):
+            resolved = _resolved_local_link(source, link.get("href", ""))
+            if resolved is not None and resolved not in available:
+                broken.append(f"{source.as_posix()} -> {resolved}")
+    if broken:
+        raise ValueError(f"generated site has broken local links: {broken}")
+    index = site[Path("index.html")]
+    for team in teams:
+        expected_href = f'teams/{team["slug"]}/index.html'
+        if f'href="{expected_href}"' not in index:
+            raise ValueError(f"board index is missing club link: {expected_href}")
+        validate_team_page(site[Path(expected_href)], team)
+
+
+def build_page(results_path: Path, *, bootstrap: dict | None = None) -> str:
+    bootstrap = bootstrap or fetch_bootstrap()
+    teams = official_teams(bootstrap)
     ctx = gw_context(bootstrap)
     got = fetch_picks(ENTRY_ID, ctx)
     if got is None:
@@ -953,6 +1320,7 @@ def build_page(results_path: Path) -> str:
         portfolio_url=PORTFOLIO_URL,
         results_url=RESULTS_URL,
         team_url=TEAM_URL,
+        club_nav=club_nav_html(teams),
         entry_id=ENTRY_ID,
         generated=generated_at.strftime("%Y-%m-%d %H:%M UTC"),
         generated_iso=generated_at.isoformat(),
@@ -961,20 +1329,52 @@ def build_page(results_path: Path) -> str:
     return page
 
 
+def build_site(results_path: Path) -> dict[Path, str]:
+    """Build the board index and exactly one preview page per official club."""
+    bootstrap = fetch_bootstrap()
+    teams = official_teams(bootstrap)
+    if not teams:
+        raise SystemExit("official bootstrap contains no teams")
+    ctx = gw_context(bootstrap)
+    events = bootstrap.get("events") or []
+    preview_gw = ctx.get("current_gw") or ctx.get("next_gw")
+    if preview_gw is None:
+        ids = [int(event.get("id") or 0) for event in events if event.get("id")]
+        preview_gw = max(ids) if ids else 0
+    live = fetch_live_points(int(preview_gw)) if preview_gw else {}
+    fixtures = fetch_fixtures()
+    generated_at = dt.datetime.now(dt.timezone.utc)
+    site: dict[Path, str] = {Path("index.html"): build_page(results_path, bootstrap=bootstrap)}
+    for team in teams:
+        relative = Path("teams") / str(team["slug"]) / "index.html"
+        site[relative] = build_team_page(
+            team,
+            teams,
+            bootstrap,
+            fixtures,
+            int(preview_gw),
+            live,
+            generated_at,
+        )
+    validate_site(site, teams)
+    return site
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Build the fplbench board Space files")
     p.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output directory")
     p.add_argument("--results", type=Path, default=DEFAULT_RESULTS)
     args = p.parse_args(argv)
 
-    page = build_page(args.results)
-    validate_page(page)
+    site = build_site(args.results)
     args.out.mkdir(parents=True, exist_ok=True)
-    index = args.out / "index.html"
     readme = args.out / "README.md"
-    index.write_text(page, encoding="utf-8")
+    for relative, page in site.items():
+        destination = args.out / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(page, encoding="utf-8")
     readme.write_text(SPACE_README, encoding="utf-8")
-    print(f"wrote {index} ({len(page)} chars)")
+    print(f"wrote {len(site)} HTML pages to {args.out}")
     print(f"wrote {readme}")
 
 

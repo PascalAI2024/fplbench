@@ -1,8 +1,9 @@
 """Upload the generated board to the HF Space x0me/fplbench-board.
 
-Uploads outputs/board/index.html (always) and outputs/board/README.md (only
-when it differs from the Space's current README, to avoid noise commits).
-Both files are committed atomically against the observed parent revision.
+Uploads outputs/board/index.html plus every generated
+outputs/board/teams/<slug>/index.html page. README.md is included only when it
+differs from the Space's current README, avoiding noise commits. All files are
+committed atomically against the observed parent revision.
 
 The HF token is read from the HF_TOKEN environment variable ONLY and is never
 printed or logged.
@@ -28,6 +29,17 @@ HEADERS = {"User-Agent": "fplbench/0.1 (research; leakage-safe FPL panel)"}
 DEFAULT_DIR = ROOT / "outputs" / "board"
 
 
+def generated_site_uploads(root: Path) -> list[tuple[Path, str]]:
+    """Deterministic upload inventory for the board and every club page."""
+    index = root / "index.html"
+    if not index.exists():
+        raise SystemExit(f"{index} not found — run scripts/build_board.py first")
+    team_pages = sorted((root / "teams").glob("*/index.html"))
+    if not team_pages:
+        raise SystemExit(f"no team pages found under {root / 'teams'}")
+    return [(index, "index.html"), *[(path, path.relative_to(root).as_posix()) for path in team_pages]]
+
+
 def readme_changed(local: Path) -> bool:
     """True when the local README differs from the Space's current one."""
     try:
@@ -49,12 +61,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--dry-run", action="store_true", help="report, don't upload")
     args = p.parse_args(argv)
 
-    index = args.dir / "index.html"
     readme = args.dir / "README.md"
-    if not index.exists():
-        raise SystemExit(f"{index} not found — run scripts/build_board.py first")
-
-    uploads = [(index, "index.html")]
+    uploads = generated_site_uploads(args.dir)
     if readme.exists() and readme_changed(readme):
         uploads.append((readme, "README.md"))
 
