@@ -11,3 +11,4 @@ __pycache__/
 .claude/
 docs/launch/
 outputs/_t*_backup/
+outputs/_my_team.json
