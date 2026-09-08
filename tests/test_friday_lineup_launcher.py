@@ -1,5 +1,8 @@
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +19,12 @@ def test_noninteractive_lineup_launcher_enables_chrome_tools() -> None:
     assert "--dangerously-skip-permissions" not in runner
 
 
+# The runner is a Windows operator-machine launcher; Linux CI has no
+# powershell.exe. The text-contract test above still runs everywhere.
+@pytest.mark.skipif(
+    shutil.which("powershell.exe") is None,
+    reason="powershell.exe unavailable (non-Windows runner)",
+)
 def test_runner_rejects_false_success_when_agent_reports_failure(tmp_path: Path) -> None:
     fake_claude = tmp_path / "fake-claude.cmd"
     fake_claude.write_text(
