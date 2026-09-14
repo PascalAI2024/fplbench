@@ -23,4 +23,4 @@ The model's own squad in the official FPL game — [live team page](https://fant
 | 1 | 53 | 50 | +3 | Haaland | 3,482,299 | 53 |
 | 2 | 102 | 81 | +21 | B.Fernandes | 1,474,311 | 155 |
 | 3 | 51 | 51 | 0 | B.Fernandes | 1,658,210 | 206 |
-| 4 (live) | 47 | 63 | -16 | B.Fernandes | 3,901,295 | 253 |
+| 4 (live) | 58 | 67 | -9 | B.Fernandes | 3,248,709 | 264 |
