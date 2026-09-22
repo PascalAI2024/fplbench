@@ -9,6 +9,13 @@ __pycache__/
 .DS_Store
 
 .claude/
+.codex/
 docs/launch/
 outputs/_t*_backup/
 outputs/_my_team.json
+outputs/board/
+outputs/board-team-final/
+outputs/board-team-preview/
+outputs/nflbench/
+outputs/friday_lineup_*.log
+outputs/friday_lineup_log.md

@@ -58,8 +58,17 @@ def from_my_team(payload: dict) -> tuple[list[int], dict[int, int], int, int]:
     picks = payload["picks"]
     owned = [int(p["element"]) for p in picks]
     selling = {int(p["element"]): int(p["selling_price"]) for p in picks}
-    bank = int(payload.get("transfers", {}).get("bank", 0))
-    free = int(payload.get("transfers", {}).get("limit") or 1)
+    transfers = payload["transfers"]
+    # `limit` is this week's total allowance, not what remains after earlier
+    # transfers. Never invent a free transfer for zero or missing API values.
+    for field in ("bank", "limit", "made"):
+        value = transfers.get(field)
+        if type(value) is not int or value < 0:
+            raise ValueError(f"invalid authenticated transfers.{field}")
+    if any(chip.get("status_for_entry") == "active" for chip in payload.get("chips", [])):
+        raise ValueError("active chip: unattended transfer planning is disabled")
+    bank = transfers["bank"]
+    free = max(0, transfers["limit"] - transfers["made"])
     return owned, selling, bank, free
 
 

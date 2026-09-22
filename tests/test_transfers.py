@@ -6,6 +6,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from scripts.plan_transfers import from_my_team
+
 from fplbench.transfers import (
     HIT_COST,
     TransferPlan,
@@ -16,6 +18,35 @@ from fplbench.transfers import (
 )
 
 POS_PLAN = ["GK"] * 2 + ["DEF"] * 5 + ["MID"] * 5 + ["FWD"] * 3
+
+
+@pytest.mark.parametrize("limit,made,remaining", [(3, 0, 3), (3, 2, 1), (2, 2, 0), (0, 0, 0), (1, 2, 0)])
+def test_authenticated_allowance_counts_only_unused_transfers(limit, made, remaining):
+    board, owned = _owned_and_market()
+    payload = {
+        "picks": [{"element": i, "selling_price": 50} for i in owned],
+        "transfers": {"bank": 0, "limit": limit, "made": made},
+    }
+    ids, selling, bank, free = from_my_team(payload)
+    assert free == remaining
+    board.loc[board["id"] == 101, "e_points_final"] = 99.0
+    plan = plan_with_baseline(board, ids, selling_prices=selling, bank_tenths=bank,
+                              free_transfers=free, max_transfers=free)
+    assert plan.n_transfers <= remaining
+    assert plan.hit_cost == 0
+
+
+@pytest.mark.parametrize("field,value", [("limit", None), ("made", None), ("bank", None), ("limit", -1), ("made", True)])
+def test_authenticated_allowance_fails_closed_on_invalid_metadata(field, value):
+    transfers = {"bank": 0, "limit": 2, "made": 0, field: value}
+    with pytest.raises(ValueError, match="invalid authenticated"):
+        from_my_team({"picks": [], "transfers": transfers})
+
+
+def test_authenticated_planning_rejects_an_active_chip():
+    with pytest.raises(ValueError, match="active chip"):
+        from_my_team({"picks": [], "transfers": {"bank": 0, "limit": 2, "made": 0},
+                      "chips": [{"name": "freehit", "status_for_entry": "active"}]})
 
 
 def _board(rows: list[dict]) -> pd.DataFrame:

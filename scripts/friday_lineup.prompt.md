@@ -27,6 +27,7 @@ Never report a success status based on an intended action, a public picks page, 
    - `expected_gain` is strictly greater than 0 (it is already net of hits — a non-positive gain means roll the transfer),
    - `hit_cost` is 0 — the plan must never cost points on an unattended run,
    - `approximate_selling_prices` is false,
+   - no chip is active, and the number of proposed transfers is at most `max(0, transfers.limit - transfers.made)` from the authenticated payload; missing or invalid allowance fields are a failure,
    - every outgoing player is in the authenticated squad and every incoming player is not.
 
    POST `/api/transfers/` from the page context with credentials included and the CSRF header, body `{"confirmed": true, "entry": 4770634, "event": <next event id>, "chip": null, "transfers": [{"element_in": <in>, "element_out": <out>, "purchase_price": <in now_cost>, "selling_price": <out selling_price from my-team>}]}`. Then re-GET `/api/my-team/4770634/` and VERIFY the squad now contains every `in` and no `out`. If the POST fails or verification mismatches, do NOT retry the transfer — append the failure and finish with `FPLBENCH_RUN_STATUS=FAILED`. A transfer is irreversible; a failed one must never be attempted twice in one run.

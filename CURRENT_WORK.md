@@ -1,10 +1,98 @@
 # fplbench — current work
 
-Updated September 8, 2026. Repo: `projects/fplbench/main` (moved here in the
+Updated September 18, 2026. Repo: `projects/fplbench/main` (moved here in the
 2026-09-07 workspace reorg, out of the retired `dev\fplbench`). Origin:
 https://github.com/PascalAI2024/fplbench.
 
 ## Verified state
+
+### September 18: Codex deadline routine replaces Claude scheduled jobs
+
+User narrowed the repair to creating a routine using their Chrome. Created and
+read back active Codex heartbeat `fplbench-deadline-routine` in
+task `01a0b615-3f94-7753-96da-0eb9bd509080`. The user explicitly REJECTED two-hour
+polling: run ONCE per gameweek, 90 minutes before its official deadline. The next
+occurrence is October 10 at 04:30 America/New_York (08:30 UTC), for GW6's verified
+10:00 UTC deadline. It reschedules the same routine to one occurrence 90 minutes
+before the following official event, respecting DST. No regular Codex polling.
+The routine dispatches the existing pre-deadline GitHub workflow to calculate and
+commit predictions and publish the Hugging Face board before managing the team.
+It checks existing post-GW scoring/publication and may dispatch a missing verified
+results refresh once. Existing post-match GitHub schedules remain active.
+GitHub/Hugging Face publication was explicitly requested; the user's Kaggle
+reference needs a destination clarification before any Kaggle upload.
+Model-selected free transfers and lineup only, stopping 20 minutes before the
+deadline. No chips or points hits. Authenticated UI reload verification
+is required before recording success. New blockers and missed deadlines must alert;
+unchanged/non-actionable checks stay quiet. No private browser API calls or tokens.
+
+All three legacy Windows FPLBench tasks are verified Disabled. Their XML backups
+are in `C:/Users/pasca/dev/_archive/fplbench/2026-09-18/scheduler/`.
+The heartbeat configuration was verified on disk and through automation view;
+an unattended authenticated save has NOT yet been demonstrated. Chrome is reachable
+but FPL was signed out; its login tab was left open for the user. No team change,
+code repair, push or publication was performed during routine setup. Existing dirty
+work is preserved. Shared continuation: `projects/fplbench/2026-09-18-deadline-routine.md`.
+
+GW5 deadline was missed (2026-09-18 17:30 UTC). The Thursday run lacked the GW5
+forecast at 16:06 UTC; forecast commit `deeb549` arrived at 18:55 UTC. Friday's
+07:35 Eastern Claude run failed on expired OAuth and 11:50 exited abnormally.
+Public GW5 picks match the saved September 10 squad/XI/C/VC/bench, with zero
+GW5 transfers. Friday workflow `35377430602` failed building the board on FPL
+503 responses, while Thursday's GW5 board remains online. Known miss already
+reported to the user: do not repeatedly alert about GW5.
+
+Next acceptance: user signs into FPL in Chrome; routine must prove authenticated
+read and, when a matching future forecast is available in the action window,
+verify saved state after the update. This entry supersedes the older claims below
+that the legacy tasks are Ready or unattended team management is proven.
+
+### September 10: GW4 deadline preparation
+
+**Live update completed after the user explicitly instructed execution now.**
+The signed-in official FPL UI showed entry 4770634, 3 free transfers, zero bank,
+and actual selling prices. Applied the model's three free transfers:
+Trafford to Pickford, Van Hecke to Konsa, Gakpo to Enzo. Confirmation showed
+0 points cost; bank after was GBP 0.2m. Saved the model XI and verified all
+15 positions by reloading the authenticated team page. Captain B.Fernandes;
+vice Enzo; bench Kinsky, Aina, Diop, Gross. No chip used. Projected gain 4.671.
+Evidence `outputs/gw4-live-verified.json`; duplicate guard recorded in
+`outputs/friday_lineup_log.md` against forecast `5bae1a7` and its SHA256.
+The earlier browser hold and authentication blocker below are now resolved.
+Completion work item: `fplbench-gw4-live-update-20260910`.
+
+- Official next deadline is **Saturday September 12, 12:30 UTC / 08:30 Eastern**.
+  Friday September 11 is preparation day, with local tasks Ready at 07:35 and
+  11:50 Eastern. Thursday's 12:05 run correctly skipped at 44.4 hours out;
+  it did not authenticate or change the team.
+- Remote `origin/main` advanced to `5bae1a7` with the committed GW4 forecast:
+  655 unique player IDs, finite `e_points_final`, event 4, all 15 public GW3
+  squad members covered. Forecast SHA256:
+  `3da4140a9808fcfd80e992ad68c4e127d4c8be90b5adeb5ebcd5ee9029bff23b`.
+  Local untracked GW4 CSV and all earlier output folders are preserved; no pull.
+- Repaired the planner used by the scheduled tasks: remaining free transfers
+  are `max(0, limit - made)`, not the whole weekly limit. Zero stays zero;
+  invalid/missing allowance data and active chips fail closed. The scheduled
+  prompt independently checks the remaining allowance before a transfer.
+  **116 tests passed**, including exhausted allowance and prior-transfer cases.
+  These safety changes are local and not yet committed or pushed.
+- Today's prediction workflow failed only at HF publishing: its OAuth token
+  had expired. Replaced GitHub `HF_TOKEN` using the existing validated `x0me`
+  login, valid until **2026-10-08T02:32:51Z**. This repairs current publishing;
+  it does not provide permanent token renewal. No secret entered project files.
+  Verification run: https://github.com/PascalAI2024/fplbench/actions/runs/34535612666.
+  Run succeeded; all 21 published HTML pages passed immutable readback. Public
+  root matches Space revision `c794ba87cded01a1d7ed94ff9f6d5df7877d330c`,
+  apart from Hugging Face's injected runtime metadata script.
+  Pre-deadline runs can refresh GW4; forecasts become immutable after deadline.
+- No live transfers, lineup changes or chips were submitted. Chrome is running,
+  but there is no existing FPL tab. Read-only sign-in preflight is pending the
+  user's release of the earlier Windows foreground hold. The 36-hour action
+  window begins September 10 at 20:30 Eastern.
+- Evidence: `outputs/gw4-readiness.json`. Jarvis owner `fplbench-deadline-prep`,
+  work item `fplbench-gw4-prep-20260910` in `fplbench-live-operations`.
+  Next acceptance: FPL sign-in preflight and Friday authenticated GET-after-POST
+  verification, or a precise failure requiring user action.
 
 Season 2026-27 is live and the weekly loop is running unattended. GW3 is
 `finished` and `data_checked`; CI scored it and pushed on 2026-09-05 and
