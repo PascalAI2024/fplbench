@@ -14,6 +14,7 @@ Until an official gameweek is verified, this table has no scores.
 | 2 | 616 | 1.3758 | 1.4672 | 308 | 2.1989 | 1.9023 |
 | 3 | 652 | 1.2920 | 1.3060 | 307 | 2.2960 | 2.4264 |
 | 4 | 656 | 1.2974 | 1.2398 | 307 | 2.3294 | 2.2958 |
+| 5 | 659 | 1.3062 | 1.1560 | 301 | 2.4155 | 2.2209 |
 
 ## Team — The Leakage-Safe XI (entry 4770634)
 
@@ -25,4 +26,4 @@ The model's own squad in the official FPL game — [live team page](https://fant
 | 2 | 102 | 81 | +21 | B.Fernandes | 1,474,311 | 155 |
 | 3 | 51 | 51 | 0 | B.Fernandes | 1,658,210 | 206 |
 | 4 | 60 | 69 | -9 | B.Fernandes | 3,170,793 | 266 |
-| 5 (live) | 48 | 44 | +4 | B.Fernandes | 2,874,375 | 314 |
+| 5 | 52 | 48 | +4 | B.Fernandes | 2,831,164 | 318 |
