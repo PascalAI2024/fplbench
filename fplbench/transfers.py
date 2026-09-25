@@ -41,6 +41,10 @@ MAX_FREE_TRANSFERS = 5
 # indifferent between holding and churning. Bias it toward holding: never
 # spend a transfer that gains nothing.
 TRANSFER_EPSILON = 0.01
+# FPL shows a doubt as a chance of playing. Below this a player may not start,
+# and may not be bought: a 50% flag is a coin toss for the whole XI slot.
+DOUBTFUL_CHANCE = 75
+UNAVAILABLE_STATUS = ("i", "s", "u", "n")
 
 
 @dataclass
@@ -69,6 +73,14 @@ class TransferPlan:
         return self.expected_xi_points - self.hit_cost - self.baseline_xi_points
 
 
+def flagged_mask(df: pd.DataFrame) -> pd.Series:
+    """Injured, suspended, unavailable, or flagged below DOUBTFUL_CHANCE."""
+    chance = pd.to_numeric(df["chance_of_playing_next_round"], errors="coerce")
+    return df["status"].astype(str).isin(UNAVAILABLE_STATUS) | (
+        chance < DOUBTFUL_CHANCE
+    )
+
+
 def _pool(board: pd.DataFrame, owned_ids: list[int]) -> pd.DataFrame:
     """Eligible players plus every owned player.
 
@@ -76,7 +88,7 @@ def _pool(board: pd.DataFrame, owned_ids: list[int]) -> pd.DataFrame:
     so availability filters new signings only.
     """
     df = board.dropna(subset=["e_points_final", "now_cost", "position", "team_name"])
-    keep = eligible_mask(df) | df["id"].isin(owned_ids)
+    keep = (eligible_mask(df) & ~flagged_mask(df)) | df["id"].isin(owned_ids)
     out = df.loc[keep].copy()
     out["now_cost"] = out["now_cost"].astype(int)
     out["e_points_final"] = out["e_points_final"].astype(float)
@@ -92,8 +104,15 @@ def plan_transfers(
     bank_tenths: int = 0,
     free_transfers: int = 1,
     max_transfers: int = 2,
+    min_transfers: int = 0,
 ) -> TransferPlan:
     """Best transfers for one gameweek.
+
+    Flagged players (`flagged_mask`) never start. An injured starter must be
+    benched or sold, so injuries drive transfers rather than only bench order;
+    a flagged player left on the bench is scored at his (discounted) points.
+    `min_transfers` forces at least that many, to price an option the solver
+    would not choose on its own.
 
     `selling_prices` maps owned player id -> tenths of a million. FPL sells at
     purchase price plus half the rise, so this must come from the authenticated
@@ -140,9 +159,12 @@ def plan_transfers(
     prob += pulp.lpSum(start[i] for i in idx) == XI_SIZE
     prob += pulp.lpSum(cap[i] for i in idx) == 1
 
+    flagged = flagged_mask(pool).to_dict()
     for i in idx:
         prob += start[i] <= squad[i]
         prob += cap[i] <= start[i]
+        if flagged[i]:
+            prob += start[i] == 0, f"flagged_{ids[i]}"
 
     for pos, n in POS_SQUAD.items():
         pos_idx = [i for i in idx if position[i] == pos]
@@ -169,11 +191,15 @@ def plan_transfers(
 
     n_transfers = pulp.lpSum(1 - squad[i] for i in owned_idx)
     prob += n_transfers <= max_transfers, "max_transfers"
+    prob += n_transfers >= min_transfers, "min_transfers"
     prob += hits >= n_transfers - free_transfers, "hits_def"
 
     status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
     if pulp.LpStatus[status] != "Optimal":
-        raise RuntimeError(f"transfer ILP failed: {pulp.LpStatus[status]}")
+        raise RuntimeError(
+            f"transfer ILP failed: {pulp.LpStatus[status]} "
+            "(too few fit players for a legal XI within the transfer limit?)"
+        )
 
     chosen = {ids[i] for i in idx if pulp.value(squad[i]) > 0.5}
     xi = [ids[i] for i in idx if pulp.value(start[i]) > 0.5]
@@ -226,9 +252,17 @@ def plan_with_baseline(
     bank_tenths: int = 0,
     free_transfers: int = 1,
     max_transfers: int = 2,
+    min_transfers: int = 0,
 ) -> TransferPlan:
     """`plan_transfers` with `expected_gain` measured against doing nothing."""
-    base = baseline_plan(board, owned_ids)
+    try:
+        base_points = baseline_plan(board, owned_ids).expected_xi_points
+        hold_note = None
+    except RuntimeError:
+        # Injuries leave no legal fit XI without a transfer: holding scores
+        # nothing, so any legal plan is a gain.
+        base_points = 0.0
+        hold_note = "holding cannot field a fit legal XI; a transfer is required"
     plan = plan_transfers(
         board,
         owned_ids,
@@ -236,8 +270,15 @@ def plan_with_baseline(
         bank_tenths=bank_tenths,
         free_transfers=free_transfers,
         max_transfers=max_transfers,
+        min_transfers=min_transfers,
     )
-    plan.baseline_xi_points = base.expected_xi_points
+    plan.baseline_xi_points = base_points
+    if hold_note:
+        plan.notes.append(hold_note)
+    board_flagged = board.loc[flagged_mask(board), "id"].astype(int)
+    for pid in sorted(set(board_flagged) & set(plan.squad_ids)):
+        where = "bench" if pid in plan.bench_ids else "squad"
+        plan.notes.append(f"flagged player {pid} kept on the {where}, never starts")
     if plan.expected_gain <= 0 and plan.out_ids:
         plan.notes.append(
             "best transfer does not beat holding after hits; roll the transfer"

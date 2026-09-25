@@ -33,6 +33,15 @@ Thiago, Evanilson. Bench Kinsky, Gross, Diop, Milenkovic (injured, back
 Oct 11). Nothing was submitted to FPL. The forecast refreshes daily until the
 deadline, so this is provisional.
 
+Injuries are now a hard constraint in the transfer ILP: a player who is injured,
+suspended or flagged below 75% never starts and cannot be bought. If injuries
+leave no legal fit XI, holding is priced at zero, so the planner has to make a
+transfer. `min_transfers` prices options the solver would not pick on its own.
+On 2026-09-25 only Milenkovic (hamstring, back Oct 11) was flagged among the 15.
+International-break news had nothing on the others. GW6 options (net of hits,
+against holding): 1 FT +1.81, 2 FT +3.88, 3 transfers (one -4 hit, which sells
+Milenkovic) +1.48. A dead bench slot is not worth a hit.
+
 Stale: HF `HF_TOKEN` expires 2026-10-08, two days before the GW6 deadline, so
 the final pre-deadline publish will fail without a rotation.
 

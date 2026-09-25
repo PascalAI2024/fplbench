@@ -314,3 +314,72 @@ def test_plan_carries_a_bench_order_with_the_backup_gk_first() -> None:
     assert set(plan.bench_ids) == set(plan.squad_ids) - set(plan.xi_ids)
     plan.bench_ids = plan.bench_ids[:3]
     assert "bench order" in " ".join(sanity_check(plan, sell))
+
+
+def _flag(board: pd.DataFrame, pid: int, status: str, chance: float | None) -> None:
+    board.loc[board["id"] == pid, ["status", "chance_of_playing_next_round"]] = [
+        status,
+        chance,
+    ]
+
+
+def test_injured_owned_player_never_starts() -> None:
+    board, owned = _owned_and_market()
+    board.loc[board["id"] == 3, "e_points_final"] = 9.0
+    _flag(board, 3, "i", 0.0)
+    plan = plan_with_baseline(
+        board, owned, selling_prices={i: 50 for i in owned}, free_transfers=0,
+        max_transfers=0,
+    )
+    assert 3 not in plan.xi_ids
+    assert any("flagged player 3" in n for n in plan.notes)
+
+
+def test_doubtful_below_75_cannot_start_but_75_can() -> None:
+    board, owned = _owned_and_market()
+    board.loc[board["id"].isin([3, 4]), "e_points_final"] = 9.0
+    _flag(board, 3, "d", 50.0)
+    _flag(board, 4, "d", 75.0)
+    plan = plan_transfers(
+        board, owned, selling_prices={i: 50 for i in owned}, free_transfers=0,
+        max_transfers=0,
+    )
+    assert 3 not in plan.xi_ids
+    assert 4 in plan.xi_ids
+
+
+def test_will_not_buy_a_doubtful_player() -> None:
+    board, owned = _owned_and_market()
+    board.loc[board["id"] == 103, "e_points_final"] = 12.0
+    _flag(board, 103, "d", 50.0)
+    plan = plan_transfers(
+        board, owned, selling_prices={i: 50 for i in owned}, free_transfers=1
+    )
+    assert 103 not in plan.in_ids
+
+
+def test_injured_goalkeepers_force_a_transfer() -> None:
+    board, owned = _owned_and_market()
+    gks = [i for i in owned if POS_PLAN[i - 1] == "GK"]
+    for gk in gks:
+        _flag(board, gk, "i", 0.0)
+    plan = plan_with_baseline(
+        board, owned, selling_prices={i: 50 for i in owned}, free_transfers=1,
+        max_transfers=1,
+    )
+    pos = board.set_index("id")["position"].to_dict()
+    assert plan.n_transfers == 1
+    assert pos[plan.in_ids[0]] == "GK"
+    assert pos[next(i for i in plan.xi_ids if pos[i] == "GK")] == "GK"
+    assert any("transfer is required" in n for n in plan.notes)
+
+
+def test_min_transfers_prices_an_option_the_solver_would_skip() -> None:
+    board, owned = _owned_and_market()
+    plan = plan_with_baseline(
+        board, owned, selling_prices={i: 50 for i in owned}, free_transfers=1,
+        max_transfers=2, min_transfers=2,
+    )
+    assert plan.n_transfers == 2
+    assert plan.hit_cost == 4.0
+    assert plan.expected_gain < 0
