@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 import pulp
 
+from fplbench.bench import order_bench
 from fplbench.squad import (
     MAX_PER_CLUB,
     POS_SQUAD,
@@ -54,6 +55,8 @@ class TransferPlan:
     hit_cost: float
     bank_after_tenths: int
     baseline_xi_points: float = 0.0
+    # Bench slots 12-15: backup GK, then outfield in autosub priority.
+    bench_ids: list[int] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     @property
@@ -177,6 +180,8 @@ def plan_transfers(
     captain = next(ids[i] for i in idx if pulp.value(cap[i]) > 0.5)
     vice = max((i for i in xi if i != captain), key=lambda i: _pts_by_id(pool, i))
 
+    bench = order_bench(pool.loc[pool["id"].isin(chosen)], xi)
+
     out_ids = sorted(owned - chosen)
     in_ids = sorted(chosen - owned)
     sold = sum(selling_prices[i] for i in out_ids)
@@ -193,6 +198,7 @@ def plan_transfers(
         + _pts_by_id(pool, captain),
         hit_cost=HIT_COST * max(0, len(out_ids) - free_transfers),
         bank_after_tenths=bank_tenths + sold - bought,
+        bench_ids=bench.ids,
     )
 
 
@@ -256,6 +262,9 @@ def sanity_check(plan: TransferPlan, selling_prices: dict[int, int]) -> list[str
         errors.append("transfers in and out are unbalanced")
     if set(plan.out_ids) & set(plan.squad_ids):
         errors.append("a player is both sold and retained")
+    bench = set(plan.squad_ids) - set(plan.xi_ids)
+    if plan.bench_ids and (len(plan.bench_ids) != 4 or set(plan.bench_ids) != bench):
+        errors.append("bench order is not the four non-starters")
     unpriced = [i for i in plan.out_ids if i not in selling_prices]
     if unpriced:
         errors.append(f"sold players without a selling price: {unpriced}")

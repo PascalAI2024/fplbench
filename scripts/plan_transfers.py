@@ -105,10 +105,12 @@ def format_plan(plan, board: pd.DataFrame, *, approximate: bool) -> str:
         lines.append(
             f"  {pos.get(i, '?'):<4}{names.get(i, i):<16}{pts.get(i, 0):>6.2f}{tag}"
         )
-    bench = [i for i in plan.squad_ids if i not in set(plan.xi_ids)]
-    bench.sort(key=lambda i: -pts.get(i, 0))
     lines.append(
-        "  BENCH: " + ", ".join(f"{names.get(i, i)} {pts.get(i, 0):.2f}" for i in bench)
+        "  BENCH: "
+        + ", ".join(
+            f"{n}. {names.get(i, i)} {pts.get(i, 0):.2f}"
+            for n, i in enumerate(plan.bench_ids, start=1)
+        )
     )
 
     lines.append("")
@@ -191,6 +193,7 @@ def main(argv: list[str] | None = None) -> int:
                     "xi": plan.xi_ids,
                     "captain": plan.captain_id,
                     "vice": plan.vice_id,
+                    "bench": plan.bench_ids,
                     "expected_xi_points": round(plan.expected_xi_points, 4),
                     "baseline_xi_points": round(plan.baseline_xi_points, 4),
                     "expected_gain": round(plan.expected_gain, 4),

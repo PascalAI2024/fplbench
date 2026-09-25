@@ -6,6 +6,36 @@ https://github.com/PascalAI2024/fplbench.
 
 ## Verified state
 
+### September 25: bench order from simulated autosubs (branch `bench-subs`)
+
+Before this, the bench was "backup GK, then outfield by `e_points_final`" in
+three places (`squad._order_bench`, `plan_transfers.format_plan`, prompt step
+6), and the planner's JSON carried no bench at all. The bench has scored 9, 17,
+14, 25 and 16 points this season, so its order is not cosmetic.
+
+`fplbench/bench.py` now scores all six outfield orders against 4,000 seeded
+scenarios under FPL's real autosub rules (pitch order, first bench player who
+played, formation bands, GK-only-for-GK). P(plays) comes from projected minutes
+through a curve measured on the 2025-26 holdout (even an 88-minute projection
+misses 3% of games), capped by FPL's chance-of-playing flag. A sub is valued at
+his points when he plays, so a rotation risk with a high ceiling can move ahead
+of a nailed low scorer; players ruled out go last. `TransferPlan.bench_ids`,
+the planner's JSON `bench`, and prompt step 6 now carry that order. The
+transfer ILP's `BENCH_WEIGHT` is unchanged. 128 tests pass (12 new); mutation
+checked both ways (always-naive order and no play-probability floor each turn
+one test red).
+
+GW6 (deadline **2026-10-10 10:00 UTC**) preview on the Sept 25 CI forecast,
+approximate selling prices, 2 free transfers inferred from public history:
+Calvert-Lewin -> Thiago, B.Fernandes -> Bruno G., +3.88 net. XI Pickford;
+Konsa, Tarkowski, Aina; Szoboszlai (C), Bruno G. (V), Enzo, Anderson; Haaland,
+Thiago, Evanilson. Bench Kinsky, Gross, Diop, Milenkovic (injured, back
+Oct 11). Nothing was submitted to FPL. The forecast refreshes daily until the
+deadline, so this is provisional.
+
+Stale: HF `HF_TOKEN` expires 2026-10-08, two days before the GW6 deadline, so
+the final pre-deadline publish will fail without a rotation.
+
 ### September 18: Codex deadline routine replaces Claude scheduled jobs
 
 User narrowed the repair to creating a routine using their Chrome. Created and

@@ -98,8 +98,14 @@ def pick_squad(df: pd.DataFrame) -> SquadResult:
     else:
         bench = squad.loc[~squad.index.isin(xi.index)].copy()
 
-    # Bench order: GK first, then by e_points_final desc (typical FPL display).
-    bench = _order_bench(bench)
+    if "id" in squad.columns:
+        # Imported here: fplbench.bench reads this module's formation bands.
+        from fplbench.bench import order_bench
+
+        order = order_bench(squad, xi["id"].tolist()).ids
+        bench = bench.set_index("id", drop=False).loc[order]
+    else:
+        bench = _order_bench(bench)
 
     cap_row = squad.loc[squad["e_points_final"].idxmax()]
     total_cost = int(squad["now_cost"].sum())

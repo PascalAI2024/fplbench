@@ -302,3 +302,15 @@ def test_sanity_check_passes_a_real_plan() -> None:
     sell = {i: 50 for i in owned}
     plan = plan_transfers(board, owned, selling_prices=sell, free_transfers=1)
     assert sanity_check(plan, sell) == []
+
+
+def test_plan_carries_a_bench_order_with_the_backup_gk_first() -> None:
+    board, owned = _owned_and_market()
+    sell = {i: 50 for i in owned}
+    plan = plan_transfers(board, owned, selling_prices=sell, free_transfers=1)
+    pos = board.set_index("id")["position"].to_dict()
+    assert len(plan.bench_ids) == 4
+    assert pos[plan.bench_ids[0]] == "GK"
+    assert set(plan.bench_ids) == set(plan.squad_ids) - set(plan.xi_ids)
+    plan.bench_ids = plan.bench_ids[:3]
+    assert "bench order" in " ".join(sanity_check(plan, sell))
