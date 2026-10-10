@@ -9,7 +9,6 @@ from typing import Any
 import pandas as pd
 import pulp
 
-
 POS_SQUAD = {"GK": 2, "DEF": 5, "MID": 5, "FWD": 3}
 POS_ORDER = {"GK": 0, "DEF": 1, "MID": 2, "FWD": 3}
 SQUAD_SIZE = 15
@@ -84,7 +83,7 @@ def pick_squad(df: pd.DataFrame) -> SquadResult:
         club_idx = [i for i in idx if pool.loc[i, "team_name"] == club]
         prob += pulp.lpSum(x[i] for i in club_idx) <= MAX_PER_CLUB, f"club_{club}"
 
-    status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
+    status = prob.solve(pulp.COIN_CMD(msg=False))
     if pulp.LpStatus[status] != "Optimal":
         raise RuntimeError(f"squad ILP failed: {pulp.LpStatus[status]}")
 
@@ -144,7 +143,7 @@ def pick_xi(squad: pd.DataFrame) -> pd.DataFrame:
     prob += pulp.lpSum(y[i] for i in fwds) >= XI_FWD[0]
     prob += pulp.lpSum(y[i] for i in fwds) <= XI_FWD[1]
 
-    status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
+    status = prob.solve(pulp.COIN_CMD(msg=False))
     if pulp.LpStatus[status] != "Optimal":
         raise RuntimeError(f"XI ILP failed: {pulp.LpStatus[status]}")
 

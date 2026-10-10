@@ -194,7 +194,7 @@ def plan_transfers(
     prob += n_transfers >= min_transfers, "min_transfers"
     prob += hits >= n_transfers - free_transfers, "hits_def"
 
-    status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
+    status = prob.solve(pulp.COIN_CMD(msg=False))
     if pulp.LpStatus[status] != "Optimal":
         raise RuntimeError(
             f"transfer ILP failed: {pulp.LpStatus[status]} "

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pulp
 import pytest
 
 from fplbench.squad import (
@@ -117,6 +118,22 @@ def test_pick_squad_respects_constraints():
         result.squad["e_points_final"].idxmax(), "web_name"
     ]
     assert "HurtStar" not in set(result.squad["web_name"])
+
+
+def test_pick_squad_and_xi_use_path_cbc(monkeypatch):
+    """Both optimizer passes must use external CBC, never PuLP's bundled binary."""
+    real_solve = pulp.LpProblem.solve
+    solvers = []
+
+    def recording_solve(problem, solver=None, **kwargs):
+        solvers.append(solver)
+        return real_solve(problem, solver=solver, **kwargs)
+
+    monkeypatch.setattr(pulp.LpProblem, "solve", recording_solve)
+    pick_squad(_tiny_pool())
+
+    assert len(solvers) == 2
+    assert all(type(solver) is pulp.COIN_CMD for solver in solvers)
 
 
 def test_pick_squad_infeasible_raises():

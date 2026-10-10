@@ -4,9 +4,8 @@ costs real squad value if it breaks in a live run."""
 from __future__ import annotations
 
 import pandas as pd
+import pulp
 import pytest
-
-from scripts.plan_transfers import from_my_team
 
 from fplbench.transfers import (
     HIT_COST,
@@ -16,6 +15,7 @@ from fplbench.transfers import (
     plan_with_baseline,
     sanity_check,
 )
+from scripts.plan_transfers import from_my_team
 
 POS_PLAN = ["GK"] * 2 + ["DEF"] * 5 + ["MID"] * 5 + ["FWD"] * 3
 
@@ -87,6 +87,28 @@ def test_zero_transfers_when_market_is_no_better() -> None:
     )
     assert plan.n_transfers == 0
     assert sorted(plan.squad_ids) == sorted(owned)
+
+
+def test_transfer_optimizer_uses_path_cbc(monkeypatch) -> None:
+    """Transfer optimization must use external CBC, not PuLP's bundled binary."""
+    real_solve = pulp.LpProblem.solve
+    solvers = []
+
+    def recording_solve(problem, solver=None, **kwargs):
+        solvers.append(solver)
+        return real_solve(problem, solver=solver, **kwargs)
+
+    monkeypatch.setattr(pulp.LpProblem, "solve", recording_solve)
+    board, owned = _owned_and_market()
+    plan_transfers(
+        board,
+        owned,
+        selling_prices={i: 50 for i in owned},
+        free_transfers=1,
+    )
+
+    assert len(solvers) == 1
+    assert type(solvers[0]) is pulp.COIN_CMD
 
 
 def test_takes_the_free_transfer_when_it_gains() -> None:
