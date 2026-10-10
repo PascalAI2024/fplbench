@@ -10,7 +10,7 @@ dependencies = [
   "lightgbm",
   "requests",
   "joblib",
-  "pulp",
+  "pulp>=3.3.2",
   "matplotlib",
   "huggingface_hub",
 ]

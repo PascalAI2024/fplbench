@@ -3,6 +3,8 @@ costs real squad value if it breaks in a live run."""
 
 from __future__ import annotations
 
+import shutil
+
 import pandas as pd
 import pulp
 import pytest
@@ -109,6 +111,7 @@ def test_transfer_optimizer_uses_path_cbc(monkeypatch) -> None:
 
     assert len(solvers) == 1
     assert type(solvers[0]) is pulp.COIN_CMD
+    assert solvers[0].path == shutil.which("cbc")
 
 
 def test_takes_the_free_transfer_when_it_gains() -> None:

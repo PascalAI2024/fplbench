@@ -30,6 +30,12 @@ documents a portable Apple Silicon setup without signing or security changes.
 The final publication suite, including the sanitized-progress binding test,
 passes 171 tests with 1 skip.
 
+The first Linux CI replay exposed PuLP 4.0's removal of the deprecated
+`LpVariable.dicts` and integer `LpStatus` interfaces. Variable creation and
+status handling now use the compatible problem APIs, and each `COIN_CMD`
+receives the exact native `cbc` path instead of accepting a package-bundled
+default. The full 171-pass suite succeeds against both PuLP 3.3.2 and 4.0.0.
+
 The existing GitHub deadline workflow remains the public-data scheduler. This
 update did not create another automation: the historical one-occurrence Codex
 deadline routine described below must be reused or explicitly replaced in its

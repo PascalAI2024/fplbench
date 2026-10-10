@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+
 import pandas as pd
 import pulp
 import pytest
@@ -134,6 +136,7 @@ def test_pick_squad_and_xi_use_path_cbc(monkeypatch):
 
     assert len(solvers) == 2
     assert all(type(solver) is pulp.COIN_CMD for solver in solvers)
+    assert all(solver.path == shutil.which("cbc") for solver in solvers)
 
 
 def test_pick_squad_infeasible_raises():
