@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -12,6 +14,7 @@ from fplbench.paths import (
     FPL_BOOTSTRAP,
     FPL_FIXTURES,
     LIVE,
+    LIVE_SEASON,
     SEASONS,
     VAASTAV,
     VAASTAV_RAW,
@@ -62,6 +65,19 @@ def download_live() -> dict[str, Path]:
     fix_path = LIVE / "fixtures.json"
     boot_path.write_text(json.dumps(bootstrap), encoding="utf-8")
     fix_path.write_text(json.dumps(fixtures), encoding="utf-8")
+    # Bind scoring metadata to one observed snapshot; CSV mtimes are insufficient.
+    manifest = {
+        "format_version": 1,
+        "season": LIVE_SEASON,
+        "captured_at_utc": datetime.now(UTC).isoformat(),
+        "bootstrap_source": FPL_BOOTSTRAP,
+        "fixtures_source": FPL_FIXTURES,
+        "bootstrap_sha256": hashlib.sha256(boot_path.read_bytes()).hexdigest(),
+        "fixtures_sha256": hashlib.sha256(fix_path.read_bytes()).hexdigest(),
+    }
+    (LIVE / "snapshot_manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    )
     pd.DataFrame(bootstrap["elements"]).to_csv(LIVE / "elements.csv", index=False)
     pd.DataFrame(bootstrap["teams"]).to_csv(LIVE / "teams.csv", index=False)
     pd.DataFrame(bootstrap["events"]).to_csv(LIVE / "events.csv", index=False)

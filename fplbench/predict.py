@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import joblib
@@ -12,9 +13,18 @@ import pandas as pd
 from fplbench.calibrate import apply_calibrator
 from fplbench.form import player_end_of_season_row
 from fplbench.ingest import load_season_players
+from fplbench.live_history import (
+    LiveHistoryError,
+    current_form_features,
+    forecast_cutoff,
+    load_current_history,
+    load_live_snapshot,
+    previous_season,
+    prior_panel_before,
+)
 from fplbench.opponent import attach_live_opponent_xgc
 from fplbench.panel import attach_prior_season_setpiece_orders
-from fplbench.paths import LIVE, LIVE_SEASON, MODELS, PREDS, PROCESSED, SEASONS
+from fplbench.paths import LIVE, LIVE_SEASON, MODELS, PREDS, PROCESSED
 from fplbench.tabfm_head import (
     fit_points_regressor,
     predict_points,
@@ -72,8 +82,16 @@ def _end_of_season_features(
 
 
 def _next_fixtures(
-    elements: pd.DataFrame, fixtures: pd.DataFrame, teams: pd.DataFrame
+    elements: pd.DataFrame,
+    fixtures: pd.DataFrame,
+    teams: pd.DataFrame,
+    *,
+    target_event: int | None = None,
 ) -> pd.DataFrame:
+    if target_event is not None:
+        fixtures = fixtures.loc[
+            pd.to_numeric(fixtures["event"], errors="coerce").eq(target_event)
+        ]
     rows = []
     for _, fx in fixtures.sort_values(["event", "kickoff_time"]).iterrows():
         if pd.isna(fx.get("event")):
@@ -108,8 +126,7 @@ def _next_fixtures(
     multi = counts[counts >= 2]
     if len(multi):
         samples = [
-            f"team={t} event={e} n={int(n)}"
-            for (t, e), n in multi.head(5).items()
+            f"team={t} event={e} n={int(n)}" for (t, e), n in multi.head(5).items()
         ]
         raise NotImplementedError(
             "Double gameweek (2+ unfinished fixtures in the same event) is not "
@@ -160,27 +177,31 @@ def _target_gw(bootstrap: dict, fx_long: pd.DataFrame) -> int:
 
 def _deadline_passed(gw: int) -> bool:
     """True if the GW's deadline (from the live bootstrap snapshot) is in the past."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     bootstrap = json.loads((LIVE / "bootstrap.json").read_text(encoding="utf-8"))
     for ev in bootstrap.get("events") or []:
         if int(ev.get("id", -1)) == int(gw) and ev.get("deadline_time"):
-            deadline = datetime.fromisoformat(
-                str(ev["deadline_time"]).replace("Z", "+00:00")
-            )
-            return datetime.now(timezone.utc) >= deadline
+            deadline = datetime.fromisoformat(str(ev["deadline_time"]))
+            return datetime.now(UTC) >= deadline
     return False
 
 
-def _prepare_live_merged() -> tuple[pd.DataFrame, list[str], pd.DataFrame, int]:
+def _prepare_live_merged(
+    *, as_of=None
+) -> tuple[pd.DataFrame, list[str], pd.DataFrame, int]:
     """Live player list + next-fixture features. Returns (merged, feats, panel, gw)."""
-    bootstrap = json.loads((LIVE / "bootstrap.json").read_text(encoding="utf-8"))
-    fixtures = pd.read_csv(LIVE / "fixtures.csv")
+    as_of = as_of if as_of is not None else datetime.now(UTC)
+    bootstrap, fixtures, snapshot = load_live_snapshot(LIVE, LIVE_SEASON, as_of)
+    gw = resolve_next_event(bootstrap)
+    cutoff = forecast_cutoff(bootstrap, gw, as_of)
     teams = pd.DataFrame(bootstrap["teams"])
     elements = pd.DataFrame(bootstrap["elements"])
     feats = (MODELS / "feature_columns.txt").read_text(encoding="utf-8").splitlines()
     panel = pd.read_parquet(PROCESSED / "panel.parquet")
-    hist = _end_of_season_features(panel, "2025-26", feats)
+    prior_season = previous_season(LIVE_SEASON)
+    prior_panel = prior_panel_before(panel, LIVE_SEASON, cutoff)
+    hist = _end_of_season_features(prior_panel, prior_season, feats)
 
     live = elements.copy()
     live["player_code"] = live["code"].astype(str)
@@ -188,13 +209,30 @@ def _prepare_live_merged() -> tuple[pd.DataFrame, list[str], pd.DataFrame, int]:
     live["value"] = live["now_cost"]
     live["name"] = live["web_name"]
 
-    fx = _next_fixtures(live, fixtures, teams)
-    gw = _target_gw(bootstrap, fx)
+    fx = _next_fixtures(live, fixtures, teams, target_event=gw)
+    if fx.empty or set(live.team) - set(fx.team):
+        raise LiveHistoryError(
+            f"GW{gw} has teams without a supported target fixture; blank gameweeks are not modeled"
+        )
     live["gw_in_season"] = gw
     live = live.merge(fx, on="team", how="left")
 
-    # Carry last-season lags / priors via player_code. GW1 has no in-season history.
+    # Prior-season aggregates stay priors. Only GW1 uses prior-season rolling form.
     merged = live.merge(hist, on="player_code", how="left", suffixes=("", "_hist"))
+    opponent_panel = prior_panel
+    opponent_season = prior_season
+    coverage = {"mode": "prior-season GW1 cold start", "target_gw": gw}
+    if gw > 1:
+        history, coverage = load_current_history(
+            LIVE, bootstrap, fixtures, snapshot, LIVE_SEASON, gw, cutoff, feats
+        )
+        form = current_form_features(
+            history, live.player_code.tolist(), gw, LIVE_SEASON, feats
+        )
+        lag_cols = [c for c in form.columns if c != "player_code"]
+        merged = merged.drop(columns=[c for c in lag_cols if c in merged.columns])
+        merged = merged.merge(form, on="player_code", how="left", validate="one_to_one")
+        opponent_panel, opponent_season = history, LIVE_SEASON
     for col in feats:
         if col not in merged.columns and f"{col}_hist" in merged.columns:
             merged[col] = merged[f"{col}_hist"]
@@ -207,10 +245,10 @@ def _prepare_live_merged() -> tuple[pd.DataFrame, list[str], pd.DataFrame, int]:
     # Live season uses the last historical players_raw snapshot (prior-season rule).
     # End-of-season form rows do not carry set-piece orders; overwrite any 0-fill.
     merged = attach_prior_season_setpiece_orders(
-        merged, load_season_players(SEASONS[-1])
+        merged, load_season_players(prior_season)
     )
-    # GW1 opponent r5 is the last 5 completed GWs of the prior season.
-    merged = attach_live_opponent_xgc(merged, panel, SEASONS[-1])
+    # After GW1, opponent form must also use validated current-season history.
+    merged = attach_live_opponent_xgc(merged, opponent_panel, opponent_season)
     merged["is_new_to_fpl"] = (
         pd.to_numeric(merged.get("prior_minutes", 0), errors="coerce")
         .fillna(0)
@@ -221,6 +259,7 @@ def _prepare_live_merged() -> tuple[pd.DataFrame, list[str], pd.DataFrame, int]:
     merged["was_home"] = pd.to_numeric(merged["was_home"], errors="coerce").fillna(0)
     merged["fdr"] = pd.to_numeric(merged["fdr"], errors="coerce")
     merged["value"] = pd.to_numeric(merged["now_cost"], errors="coerce")
+    merged.attrs["live_feature_coverage"] = coverage
     return merged, feats, panel, gw
 
 
@@ -278,7 +317,9 @@ def attach_quantiles_to_gw1(path: Path | None = None) -> pd.DataFrame:
         pd.to_numeric(merged.get("prior_starts"), errors="coerce").fillna(0)
         / pd.to_numeric(merged.get("prior_games"), errors="coerce").replace(0, np.nan)
     ).fillna(0)
-    last_start = pd.to_numeric(merged.get("starts_l1"), errors="coerce").fillna(0) >= 0.5
+    last_start = (
+        pd.to_numeric(merged.get("starts_l1"), errors="coerce").fillna(0) >= 0.5
+    )
     typical = pd.to_numeric(merged.get("prior_minutes_pg"), errors="coerce").fillna(0)
     regular = (
         (merged["status"].eq("a")) & (start_rate >= 0.6) & last_start & (typical >= 60)

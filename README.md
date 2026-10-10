@@ -127,6 +127,42 @@ before the gameweek's first fixture; the second fixture cannot observe the
 first. Feature names end in `_l1`, `_r3`, `_r5`. Live comparison uses
 pre-deadline `ep_next`, also never fed to the model.
 
+Live scoring now enforces the same season and gameweek boundary. GW1 can use
+the immediately preceding season's known form. From GW2 onward, rolling
+player and opponent features come from completed current-season fixture rows;
+prior-season aggregates and set-piece orders remain separate priors. Live
+fixture selection targets the bootstrap's next event exactly. Unsupported
+blank or double gameweeks fail explicitly.
+
+`download_live()` writes `data/raw/live/snapshot_manifest.json`, binding the
+bootstrap and fixture JSON bytes to their official sources, configured season,
+and UTC capture time. Scoring rejects snapshots older than 24 hours, snapshots
+observed after its cutoff, and generation at or after the target deadline.
+
+Mid-season scoring additionally requires an offline, previously authorized
+official history bundle; the scoring code does not download player histories:
+
+- `data/raw/live/history.csv`: official per-fixture history with `element`,
+  `fixture`, `round`, `kickoff_time`, `was_home`, and the raw statistics used
+  by the saved model's lag features. Stable codes, positions, clubs, and DefCon
+  labels are derived after fixture/element alignment is checked.
+- `data/raw/live/history_manifest.json`: `format_version: 1`, `season`,
+  `source: "https://fantasy.premierleague.com/api/element-summary/"`,
+  `captured_at_utc`, `history_sha256`, `bootstrap_sha256`, `fixtures_sha256`,
+  `covered_element_ids`, and `history_rows_by_element`. The last field records
+  each original response's row count, with element IDs as string keys.
+
+The manifest covers every current element, including verified empty histories.
+Original response counts detect omitted zero-minute fixtures; cumulative
+minutes, starts, and points cross-check coverage against the exact bound
+bootstrap. They are not substituted for rolling features. Included records
+must precede the target GW and both capture times, match fixture dates/events,
+and have both official fixture completion flags. Conflicting duplicates,
+missing scoring fields, or incomplete coverage stop inference. A missing bundle
+never falls back to last-season rolling form. Boundary regressions are in
+[`tests/test_live_history.py`](tests/test_live_history.py); current engine
+status is in [`CURRENT_WORK.md`](CURRENT_WORK.md).
+
 ---
 
 ## DefCon labels

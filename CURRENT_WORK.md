@@ -1,5 +1,45 @@
 # fplbench — current work
 
+## October 10, 2026: isolated current-season feature correction
+
+Owner: delegated Codex task `2026-10-08/task-2`; source branch
+`codex/current-season-features` in its isolated `engine-fix` checkout. Base
+`fae0a9f81fe9da6258c6bc1667cd29b71bae7ccb`. The original Windows checkout and
+the frozen planner-validation packet are preserved read-only. This is a new
+source correction, not a reconstruction of the unavailable reviewed repair ZIP.
+
+The live predictor previously joined 2025/26 end-of-season rolling form for
+every GW. It now restricts that cold start to GW1. Later player/opponent form
+uses validated current-season fixture history and the same lag implementation
+as training. Previous-season aggregate priors and set-piece orders remain
+separate. Metadata, season, target-GW, fixture date/completion, response row
+counts, cumulative coverage, and deadline boundaries are checked before model
+inference. No player-history downloader, credential flow, publication, or live
+team action was added.
+
+Full final local suite: 169 passed. Changed-file Ruff checks and Git whitespace
+checks pass. The source correction is tested; current-season forecasting is
+blocked by missing input data.
+Fresh official bootstrap and fixture metadata captured October 10 at
+00:04:14 UTC resolve GW6 and 667 elements. Read-only preparation against the
+existing 139,029-row local panel stops at `missing history_manifest.json`;
+the panel contains only 2021/22 through 2025/26. No current-season forecast was
+generated. Exact new required bundle files, raw fields, provenance, and cutoff
+rules are in the task's `engine-fix-input-audit.json` and the README.
+
+Next acceptance check: materialize a previously authorized official history
+bundle, verify complete current-season coverage and cutoff provenance, then
+generate and independently evaluate a fresh forecast. Its predictive error
+and calibration remain unmeasured. Do not use this source-only correction or
+the old under-review forecasts for live transfers. Existing no-hit/no-chip and
+model-only experiment rules remain intact.
+
+Preservation boundary: all new source/data/evidence stays inside this task's
+isolated checkout and final frozen handoff. Parent should pass the immutable
+receipt to preservation owner `01a122f8-eded-7454-ad7e-9e39c5b5a0d1`; no original
+FPL files should be snapshotted as changed by this correction. No remote backup
+or Mac replay is implied by local commits or archives.
+
 Updated September 18, 2026. Repo: `projects/fplbench/main` (moved here in the
 2026-09-07 workspace reorg, out of the retired `dev\fplbench`). Origin:
 https://github.com/PascalAI2024/fplbench.

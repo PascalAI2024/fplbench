@@ -45,3 +45,54 @@ def test_next_fixtures_picks_earliest_event_per_team():
     assert set(out["team"]) == {1, 2, 3}
     assert int(out.loc[out["team"].eq(1), "event"].iloc[0]) == 1
     assert int(out.loc[out["team"].eq(1), "opponent"].iloc[0]) == 2
+
+
+def test_target_event_excludes_unfinished_old_fixture_and_future_dgw():
+    fixtures = pd.DataFrame(
+        [
+            {
+                "event": event,
+                "kickoff_time": f"2026-10-{day:02d}T12:00:00Z",
+                "finished": False,
+                "team_h": 1,
+                "team_a": opponent,
+                "team_h_difficulty": 2,
+                "team_a_difficulty": 3,
+            }
+            for event, day, opponent in [(4, 1, 2), (5, 10, 2), (6, 17, 2), (6, 18, 3)]
+        ]
+    )
+    out = _next_fixtures(
+        pd.DataFrame({"team": [1, 2, 3]}), fixtures, _teams(), target_event=5
+    )
+    assert set(out.event) == {5}
+    assert set(out.team) == {1, 2}
+
+
+def test_blank_target_team_does_not_receive_a_later_event():
+    fixtures = pd.DataFrame(
+        [
+            {
+                "event": 5,
+                "kickoff_time": "2026-10-10T12:00:00Z",
+                "finished": False,
+                "team_h": 1,
+                "team_a": 2,
+                "team_h_difficulty": 2,
+                "team_a_difficulty": 3,
+            },
+            {
+                "event": 6,
+                "kickoff_time": "2026-10-17T12:00:00Z",
+                "finished": False,
+                "team_h": 1,
+                "team_a": 3,
+                "team_h_difficulty": 2,
+                "team_a_difficulty": 3,
+            },
+        ]
+    )
+    out = _next_fixtures(
+        pd.DataFrame({"team": [1, 2, 3]}), fixtures, _teams(), target_event=5
+    )
+    assert 3 not in set(out.team)
