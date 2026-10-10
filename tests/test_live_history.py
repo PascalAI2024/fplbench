@@ -396,6 +396,85 @@ def test_live_ingest_records_hashes_without_requesting_histories(tmp_path, monke
     )
 
 
+def test_live_history_acquisition_covers_every_element_and_binds_snapshot(
+    tmp_path, monkeypatch
+):
+    data = bundle(tmp_path)
+    by_element = {
+        101: data[3].loc[data[3].element.eq(101)].drop(columns="element"),
+        102: data[3].iloc[:0].drop(columns="element"),
+    }
+    calls = []
+
+    def get(url):
+        calls.append(url)
+        element_id = int(url.rstrip("/").rsplit("/", 1)[-1])
+        return json.dumps(
+            {"history": by_element[element_id].to_dict("records")}
+        ).encode()
+
+    monkeypatch.setattr(ingest, "_get", get)
+    result = ingest.download_live_history(tmp_path, max_workers=1, as_of=AS_OF)
+
+    assert calls == [f"{HISTORY_SOURCE}101/", f"{HISTORY_SOURCE}102/"]
+    assert result == {
+        "history": tmp_path / "history.csv",
+        "manifest": tmp_path / "history_manifest.json",
+    }
+    history = pd.read_csv(result["history"])
+    manifest = json.loads(result["manifest"].read_text())
+    assert history.element.tolist() == [101, 101, 101]
+    assert manifest["covered_element_ids"] == [101, 102]
+    assert manifest["history_rows_by_element"] == {"101": 3, "102": 0}
+    assert manifest["bootstrap_sha256"] == data[2]["bootstrap_sha256"]
+    assert manifest["fixtures_sha256"] == data[2]["fixtures_sha256"]
+    assert manifest["source"] == HISTORY_SOURCE
+    assert manifest["history_sha256"] == hashlib.sha256(
+        result["history"].read_bytes()
+    ).hexdigest()
+
+
+def test_live_history_acquisition_failure_preserves_existing_bundle(
+    tmp_path, monkeypatch
+):
+    bundle(tmp_path)
+    history_before = (tmp_path / "history.csv").read_bytes()
+    manifest_before = (tmp_path / "history_manifest.json").read_bytes()
+
+    def get(url):
+        if url.endswith("101/"):
+            return b'{"history": []}'
+        return b'{"history_past": []}'
+
+    monkeypatch.setattr(ingest, "_get", get)
+    with pytest.raises(LiveHistoryError, match="element 102"):
+        ingest.download_live_history(tmp_path, max_workers=1, as_of=AS_OF)
+    assert (tmp_path / "history.csv").read_bytes() == history_before
+    assert (tmp_path / "history_manifest.json").read_bytes() == manifest_before
+    assert not list(tmp_path.glob(".history*.tmp"))
+
+
+def test_predict_live_orders_snapshot_history_and_inference(tmp_path, monkeypatch):
+    from scripts import predict_live
+
+    calls = []
+    monkeypatch.setattr(predict_live, "PREDS", tmp_path)
+    monkeypatch.setattr(
+        predict_live, "download_live", lambda: calls.append("snapshot")
+    )
+    monkeypatch.setattr(
+        predict_live, "download_live_history", lambda: calls.append("history")
+    )
+
+    def run_prediction():
+        calls.append("predict")
+        return pd.DataFrame({"id": [101]})
+
+    monkeypatch.setattr(predict_live, "predict_next_gw", run_prediction)
+    predict_live.main([])
+    assert calls == ["snapshot", "history", "predict"]
+
+
 def test_prepare_uses_current_form_and_priors_separately(tmp_path, monkeypatch):
     bundle(tmp_path)
     model_dir = tmp_path / "models"

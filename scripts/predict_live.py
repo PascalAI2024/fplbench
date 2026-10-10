@@ -5,7 +5,7 @@ Usage:
   python scripts/predict_live.py --help
 
 Equivalent one-liner:
-  python -c "from fplbench.ingest import download_live; from fplbench.predict import predict_next_gw; download_live(); predict_next_gw()"
+  python -c "from fplbench.ingest import download_live, download_live_history; from fplbench.predict import predict_next_gw; download_live(); download_live_history(); predict_next_gw()"
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from fplbench.ingest import download_live
+from fplbench.ingest import download_live, download_live_history
 from fplbench.paths import PREDS
 from fplbench.predict import predict_next_gw
 
@@ -31,6 +31,8 @@ def main(argv: list[str] | None = None) -> None:
 
     print("download_live …")
     download_live()
+    print("download_live_history …")
+    download_live_history()
     print("predict_next_gw …")
     preds = predict_next_gw()
     written = sorted(PREDS.glob("*.csv"))

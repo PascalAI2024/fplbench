@@ -321,6 +321,11 @@ def test_space_metadata_and_workflow_safety_contracts():
     assert "github.ref == 'refs/heads/main'" in live
     assert "!cancelled()" not in live
     assert "group: fplbench-live-${{ github.ref }}" in live
+    snapshot_step = live.index("Download live metadata snapshot")
+    history_step = live.index("Acquire official current-season histories")
+    predict_step = live.index("Predict from bound live inputs")
+    assert snapshot_step < history_step < predict_step
+    assert "download_live_history" in live
     assert "permissions:\n  contents: read" in publish
     assert "group: fplbench-hf-publication" in publish
     quality = (root / ".github" / "workflows" / "quality.yml").read_text(

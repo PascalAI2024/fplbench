@@ -1,5 +1,35 @@
 # fplbench — current work
 
+## October 10, 2026: official live-history acquisition repair
+
+Manual pre-deadline run
+[`38038374950`](https://github.com/PascalAI2024/fplbench/actions/runs/38038374950)
+on `a7e8376` downloaded the historical panel and raw season files and trained
+the models successfully, then failed during live inference at 08:35 UTC with
+`LiveHistoryError: missing history_manifest.json`. Prediction commit and board
+publication were correctly skipped. The root cause was an orchestration gap:
+the strict mid-season validator required a current-season official history
+bundle, but neither the workflow nor `scripts/predict_live.py` acquired it.
+
+The live loop now downloads one exact bootstrap/fixture snapshot, retrieves the
+public official `element-summary` history for every current element with bounded
+parallelism and transient retries, writes original per-element row counts, and
+binds the resulting CSV to the snapshot hashes in `history_manifest.json`.
+Acquisition is all-or-nothing: malformed or incomplete responses do not replace
+an existing bundle, and the manifest is published last. Inference retains all
+existing season, cutoff, fixture-completion, stable-code, cumulative-coverage,
+and feature-field checks; no fallback was introduced.
+The acquisition/provenance regressions pass 48 focused tests; the complete
+local suite passes 174 tests with 1 skip. Python compilation and Git whitespace
+checks also pass.
+
+The GW6 deadline passed at 10:00 UTC, so this repair must not replay the
+pre-deadline job retrospectively. The already committed 667-player forecast and
+sanitized board remain frozen and unscored with SHA-256
+`37a81e7b5756a8fd7e7c631abea3ef08128e0aaa967c15637a7b77abdd9cfca2`.
+No team action, credential flow, new automation, or raw-history publication is
+part of this repair.
+
 ## October 10, 2026: GW6 forecast, saved team, and portable solver
 
 The current-season repair is now materialized as a deterministic GW6 forecast.
@@ -56,8 +86,9 @@ uses validated current-season fixture history and the same lag implementation
 as training. Previous-season aggregate priors and set-piece orders remain
 separate. Metadata, season, target-GW, fixture date/completion, response row
 counts, cumulative coverage, and deadline boundaries are checked before model
-inference. No player-history downloader, credential flow, publication, or live
-team action was added.
+inference. At this source-correction stage no player-history downloader,
+credential flow, publication, or live team action was added; the acquisition
+gap was subsequently closed by the workflow repair above.
 
 Full final local suite: 169 passed. Changed-file Ruff checks and Git whitespace
 checks pass. The source correction is tested; current-season forecasting is

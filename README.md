@@ -143,11 +143,15 @@ blank or double gameweeks fail explicitly.
 
 `download_live()` writes `data/raw/live/snapshot_manifest.json`, binding the
 bootstrap and fixture JSON bytes to their official sources, configured season,
-and UTC capture time. Scoring rejects snapshots older than 24 hours, snapshots
+and UTC capture time. `download_live_history()` then requests every current
+element's public official fixture history and atomically writes the CSV plus its
+binding manifest. The pre-deadline workflow runs those phases in that order
+before inference. Scoring rejects snapshots older than 24 hours, snapshots
 observed after its cutoff, and generation at or after the target deadline.
 
-Mid-season scoring additionally requires an offline, previously authorized
-official history bundle; the scoring code does not download player histories:
+Mid-season scoring additionally requires that complete official history bundle.
+Acquisition is an explicit ingestion phase; the scoring and feature code remains
+offline and never substitutes network data or last-season rolling form:
 
 - `data/raw/live/history.csv`: official per-fixture history with `element`,
   `fixture`, `round`, `kickoff_time`, `was_home`, and the raw statistics used
@@ -166,7 +170,10 @@ bootstrap. They are not substituted for rolling features. Included records
 must precede the target GW and both capture times, match fixture dates/events,
 and have both official fixture completion flags. Conflicting duplicates,
 missing scoring fields, or incomplete coverage stop inference. A missing bundle
-never falls back to last-season rolling form. Boundary regressions are in
+never falls back to last-season rolling form. An acquisition failure leaves the
+previous CSV/manifest pair untouched; the binding manifest is replaced last so
+an interruption cannot make partial history pass validation. Boundary
+regressions are in
 [`tests/test_live_history.py`](tests/test_live_history.py); current engine
 status is in [`CURRENT_WORK.md`](CURRENT_WORK.md).
 
