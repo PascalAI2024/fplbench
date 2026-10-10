@@ -18,7 +18,6 @@ LightGBM forecasts, and a public post-gameweek scoring record.
 [Current work](CURRENT_WORK.md) ·
 [macOS setup](docs/MAC_SETUP.md) ·
 [Frozen forecasts](outputs/predictions/) ·
-[Official team](https://fantasy.premierleague.com/entry/4770634/history) ·
 [Portfolio](https://github.com/PascalAI2024/portfolio)
 
 The operating contract is simple: generate and commit the forecast before the
@@ -212,12 +211,12 @@ The current freeze guard rejects post-deadline overwrites of an existing board.
 |----------|------|
 | Dataset | https://huggingface.co/datasets/x0me/fplbench |
 | Responsive benchmark board | https://huggingface.co/spaces/x0me/fplbench-board |
-| **The model's own FPL team** | https://fantasy.premierleague.com/entry/4770634/history |
 | Portfolio | https://github.com/PascalAI2024/portfolio |
 
-The published squad is represented by *The Leakage-Safe XI* in the official
-FPL game. Live points and rank remain provisional until FPL completes its
-review; the public board labels that state explicitly.
+The published squad is represented by *The Leakage-Safe XI*. Its account
+identifier stays in private runtime configuration; the public board carries
+only the sanitized saved-state observation. Points and rank remain provisional
+until FPL completes its review, which the public board labels explicitly.
 
 The corrected export contains **139,029 rows and 165 columns**: 109,282 train
 rows and 29,747 validation rows. Its fixture key, same-GW lag contract, schema,

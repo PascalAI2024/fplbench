@@ -171,7 +171,7 @@ def test_upsert_preserves_team_section_postamble(tmp_path: Path):
         "mae_ep_next_played": 1.4,
     }
     team_section = (
-        "## Team — The Leakage-Safe XI (entry 4770634)\n\n"
+        "## Team — The Leakage-Safe XI\n\n"
         "| GW | pts | GW avg | vs avg | captain | overall rank | total pts |\n"
         "|---|---|---|---|---|---|---|\n"
         "| 1 (live) | 25 | 23 | +2 | Haaland | 3,383,283 | 25 |\n"

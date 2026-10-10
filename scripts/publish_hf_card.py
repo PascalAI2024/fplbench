@@ -30,10 +30,8 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from track_team import (  # noqa: E402
-    ENTRY_ID,
     TEAM_NAME,
-    TEAM_URL,
-    build_team_rows,
+    parse_team_rows,
 )
 
 from fplbench.score import split_results_md  # noqa: E402
@@ -89,10 +87,9 @@ def team_summary_table_md(rows: list[dict]) -> str:
 
 
 def build_scoreboard(results_path: Path) -> str:
-    _, mae_rows, _ = split_results_md(
-        results_path.read_text(encoding="utf-8") if results_path.exists() else ""
-    )
-    team_rows = build_team_rows()
+    results_text = results_path.read_text(encoding="utf-8") if results_path.exists() else ""
+    _, mae_rows, _ = split_results_md(results_text)
+    team_rows = parse_team_rows(results_text)
 
     parts = [SCOREBOARD_HEADING, ""]
     parts.append(
@@ -115,18 +112,14 @@ def build_scoreboard(results_path: Path) -> str:
     parts += ["", f"### Live team — {TEAM_NAME}", ""]
     if team_rows:
         latest = max(team_rows, key=lambda item: item["gw"])
-        parts.append(
-            f"Current captain: **{latest['captain']}** · official entry "
-            f"**{ENTRY_ID}**"
-        )
+        parts.append(f"Current captain: **{latest['captain']}**")
         parts += ["", team_summary_table_md(team_rows)]
     else:
         parts.append("No gameweek data yet.")
     parts += [
         "",
         f"[Open the visual board](https://huggingface.co/spaces/x0me/fplbench-board) · "
-        f"[inspect the committed forecast]({GITHUB_URL}/tree/main/outputs/predictions) · "
-        f"[view the official team]({TEAM_URL})",
+        f"[inspect the committed forecast]({GITHUB_URL}/tree/main/outputs/predictions)",
         "",
         f"_Last refreshed: {dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}_",
     ]

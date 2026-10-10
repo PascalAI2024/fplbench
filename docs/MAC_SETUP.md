@@ -50,6 +50,17 @@ official-history bundle. That raw bundle is intentionally not published and
 the predictor fails closed when it is absent or does not match the bound
 bootstrap and fixture snapshots.
 
+Commands that read a specific FPL account accept `--entry <id>` or the
+process-local `FPLBENCH_ENTRY_ID` environment variable. Keep that value in a
+private shell or secret store; do not add it to tracked files. Public board and
+dataset-card builds consume the sanitized saved-state and results records and
+therefore do not need the account identifier.
+
+The post-gameweek GitHub workflow reads the same value only from the existing
+`FPLBENCH_ENTRY_ID` Actions secret. If it is absent, the workflow preserves the
+last sanitized team table and logs a notice instead of exposing an identifier
+or failing unrelated scoring/publication work.
+
 On Ubuntu, install `coinor-cbc` with the system package manager before running
 the same Python commands. Other platforms are supported when a native `cbc`
 executable is available on `PATH`.

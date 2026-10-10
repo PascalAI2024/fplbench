@@ -5,12 +5,12 @@ dark-pitch visual identity of the original hand-made GW1 board:
 
 - header: current/next GW + a deadline countdown (deadline ISO embedded,
   small inline JS ticks it down),
-- pitch view of the CURRENT applied team (entry picks; falls back to the
-  latest GW whose picks are available and labels which GW is shown),
+- pitch view of the latest sanitized saved-team observation (with an optional
+  privately configured entry fallback for older records),
 - team performance table (same data as scripts/track_team.py),
 - model scoreboard (per-GW MAE rows parsed from RESULTS.md),
 - one responsive provisional data preview for every official FPL club,
-- footer links (GitHub repo, HF dataset, official team page).
+- footer links (GitHub repo, HF dataset, and portfolio).
 
 Everything is rendered server-side in Python; the only JS on the page is the
 countdown ticker. Output: outputs/board/index.html,
@@ -49,11 +49,11 @@ if str(SCRIPTS) not in sys.path:
 
 from track_team import (  # noqa: E402
     API,
-    ENTRY_ID,
     TEAM_NAME,
-    TEAM_URL,
     _get_json,
     build_team_rows,
+    configured_entry_id,
+    parse_team_rows,
 )
 
 from fplbench.score import split_results_md  # noqa: E402
@@ -102,7 +102,6 @@ real team, and scored after each officially verified gameweek.
 - [Explore the dataset](https://huggingface.co/datasets/x0me/fplbench)
 - [Inspect the code and frozen forecasts](https://github.com/PascalAI2024/fplbench)
 - [Read the public score record](https://github.com/PascalAI2024/fplbench/blob/main/RESULTS.md)
-- [View the model's official FPL team](https://fantasy.premierleague.com/entry/4770634/history)
 - Browse the current official club previews from the board's club navigation.
 
 The board is regenerated from public FPL data by
@@ -200,6 +199,45 @@ def build_squad(bootstrap: dict, picks: dict, live: dict[int, dict[str, Any]]) -
                 "multiplier": int(pick.get("multiplier") or 0),
                 "points": stats.get("points"),
                 "minutes": stats.get("minutes"),
+            }
+        )
+    return squad
+
+
+def build_squad_from_observation(
+    bootstrap: dict, observation: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Render a saved/read-back squad without publishing its account identifier."""
+    names = [*observation.get("starting_xi", []), *observation.get("bench", [])]
+    if len(names) != 15 or len(set(names)) != 15:
+        raise ValueError("saved team observation must contain 15 unique players")
+    elements_by_name: dict[str, list[dict[str, Any]]] = {}
+    for element in bootstrap.get("elements") or []:
+        elements_by_name.setdefault(str(element.get("web_name") or "").casefold(), []).append(
+            element
+        )
+    teams = {int(team["id"]): team for team in bootstrap.get("teams") or []}
+    captain = str(observation.get("captain") or "")
+    vice = str(observation.get("vice_captain") or "")
+    squad: list[dict[str, Any]] = []
+    for slot, name in enumerate(names, start=1):
+        matches = elements_by_name.get(str(name).casefold(), [])
+        if len(matches) != 1:
+            raise ValueError(f"saved player name is not unique in bootstrap: {name}")
+        element = matches[0]
+        team = teams.get(int(element.get("team") or 0), {})
+        is_captain = name == captain
+        squad.append(
+            {
+                "slot": slot,
+                "name": name,
+                "pos": POS_BY_TYPE.get(int(element.get("element_type") or 0), "MID"),
+                "club": team.get("short_name") or team.get("name") or "",
+                "captain": is_captain,
+                "vice": name == vice,
+                "multiplier": 2 if is_captain else (1 if slot <= 11 else 0),
+                "points": None,
+                "minutes": None,
             }
         )
     return squad
@@ -1034,7 +1072,6 @@ PAGE = """<!DOCTYPE html>
         <a class="action" href="{dataset_url}" target="_blank" rel="noopener noreferrer">Explore data</a>
         <a class="action" href="{github_url}" target="_blank" rel="noopener noreferrer">Inspect code</a>
         <a class="action" href="{results_url}" target="_blank" rel="noopener noreferrer">Read results</a>
-        <a class="action" href="{team_url}" target="_blank" rel="noopener noreferrer">Official team</a>
       </nav>
       <div class="kicker">team performance</div>
       {team_table}
@@ -1059,7 +1096,6 @@ PAGE = """<!DOCTYPE html>
     <a href="{github_url}" target="_blank" rel="noopener noreferrer">GitHub: PascalAI2024/fplbench</a>
     <a href="{dataset_url}" target="_blank" rel="noopener noreferrer">HF dataset: x0me/fplbench</a>
     <a href="{portfolio_url}" target="_blank" rel="noopener noreferrer">More work: PascalAI2024/portfolio</a>
-    <a href="{team_url}" target="_blank" rel="noopener noreferrer">Official team page (entry {entry_id})</a>
     <time class="generated" datetime="{generated_iso}">refreshed {generated}</time>
   </footer>
   <div class="scan"></div>
@@ -1380,15 +1416,28 @@ def build_page(results_path: Path, *, bootstrap: dict | None = None) -> str:
     progress = load_latest_progress()
     teams = official_teams(bootstrap)
     ctx = gw_context(bootstrap)
-    got = fetch_picks(ENTRY_ID, ctx)
-    if got is None:
-        raise SystemExit("no picks available for any gameweek yet")
-    shown_gw, picks = got
-    live = fetch_live_points(shown_gw)
-    squad = build_squad(bootstrap, picks, live)
+    results_text = results_path.read_text(encoding="utf-8") if results_path.exists() else ""
+    if progress is not None:
+        shown_gw = int(progress["gameweek"])
+        observation = progress["saved_team_observation"]
+        squad = build_squad_from_observation(bootstrap, observation)
+        picks: dict[str, Any] = {"entry_history": {}}
+        team_rows = parse_team_rows(results_text)
+    else:
+        entry_id = configured_entry_id()
+        if entry_id is None:
+            raise SystemExit(
+                "no sanitized saved-team observation; set FPLBENCH_ENTRY_ID for the private fallback"
+            )
+        got = fetch_picks(entry_id, ctx)
+        if got is None:
+            raise SystemExit("no picks available for any gameweek yet")
+        shown_gw, picks = got
+        live = fetch_live_points(shown_gw)
+        squad = build_squad(bootstrap, picks, live)
+        team_rows = build_team_rows(entry_id)
     xi_chips, bench_chips, formation = render_chips(squad)
 
-    team_rows = build_team_rows()
     latest = max(team_rows, key=lambda r: r["gw"]) if team_rows else None
     captain = next((p["name"] for p in squad if p["captain"]), "—")
     entry_hist = picks.get("entry_history") or {}
@@ -1396,9 +1445,7 @@ def build_page(results_path: Path, *, bootstrap: dict | None = None) -> str:
     total_pts = entry_hist.get("total_points")
     rank = entry_hist.get("overall_rank") or (latest or {}).get("overall_rank")
 
-    _, mae_rows, _ = split_results_md(
-        results_path.read_text(encoding="utf-8") if results_path.exists() else ""
-    )
+    _, mae_rows, _ = split_results_md(results_text)
 
     deadline = ctx.get("next_deadline")
     if deadline and ctx.get("next_gw") is not None:
@@ -1416,7 +1463,13 @@ def build_page(results_path: Path, *, bootstrap: dict | None = None) -> str:
         ),
         {},
     )
-    if shown_event.get("finished") and shown_event.get("data_checked"):
+    if progress is not None:
+        score_status = "unscored forecast"
+        state_note = (
+            f"GW{shown_gw} saved state is observed; actual points remain pending "
+            "official verification."
+        )
+    elif shown_event.get("finished") and shown_event.get("data_checked"):
         score_status = "verified"
         state_note = f"GW{shown_gw} is officially data-checked."
     elif shown_event.get("finished"):
@@ -1451,9 +1504,7 @@ def build_page(results_path: Path, *, bootstrap: dict | None = None) -> str:
         dataset_url=DATASET_URL,
         portfolio_url=PORTFOLIO_URL,
         results_url=RESULTS_URL,
-        team_url=TEAM_URL,
         club_nav=club_nav_html(teams),
-        entry_id=ENTRY_ID,
         generated=generated_at.strftime("%Y-%m-%d %H:%M UTC"),
         generated_iso=generated_at.isoformat(),
     )

@@ -157,7 +157,14 @@ jobs:
 
       # Track only after scoring completed or intentionally no-op'd.
       - name: Track team performance
-        run: python scripts/track_team.py
+        env:
+          FPLBENCH_ENTRY_ID: ${{ secrets.FPLBENCH_ENTRY_ID }}
+        run: |
+          if [[ -z "${FPLBENCH_ENTRY_ID:-}" ]]; then
+            echo "Private FPL entry id is not configured; preserving the existing sanitized team table."
+            exit 0
+          fi
+          python scripts/track_team.py
 
       - name: Commit RESULTS.md
         run: |

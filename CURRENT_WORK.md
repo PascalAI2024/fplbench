@@ -148,7 +148,7 @@ is required before recording success. New blockers and missed deadlines must ale
 unchanged/non-actionable checks stay quiet. No private browser API calls or tokens.
 
 All three legacy Windows FPLBench tasks are verified Disabled. Their XML backups
-are in `C:/Users/pasca/dev/_archive/fplbench/2026-09-18/scheduler/`.
+are retained in the private scheduler archive.
 The heartbeat configuration was verified on disk and through automation view;
 an unattended authenticated save has NOT yet been demonstrated. Chrome is reachable
 but FPL was signed out; its login tab was left open for the user. No team change,
@@ -171,7 +171,7 @@ that the legacy tasks are Ready or unattended team management is proven.
 ### September 10: GW4 deadline preparation
 
 **Live update completed after the user explicitly instructed execution now.**
-The signed-in official FPL UI showed entry 4770634, 3 free transfers, zero bank,
+The signed-in official FPL UI for the privately configured entry showed 3 free transfers, zero bank,
 and actual selling prices. Applied the model's three free transfers:
 Trafford to Pickford, Van Hecke to Konsa, Gakpo to Enzo. Confirmation showed
 0 points cost; bank after was GBP 0.2m. Saved the model XI and verified all
@@ -229,7 +229,7 @@ Model MAE improves every week so far. GW3 is the first week the model beat
 FPL's own `ep_next` on the players-who-played split, which had gone against it
 in GW1 and GW2.
 
-The Leakage-Safe XI (entry 4770634): 53 / 102 / 51 = **206 points**, overall
+The Leakage-Safe XI: 53 / 102 / 51 = **206 points**, overall
 rank 1,658,210. Zero transfers all season — by design, transfers are never
 applied automatically.
 
@@ -238,7 +238,7 @@ applied automatically.
 Pushed to `main`, CI green (run 34179506259).
 
 - `add785b` — retry/backoff on transient FPL API errors. A single 503 from
-  `/entry/4770634/history/` killed the whole 2026-09-04 pre-deadline run.
+  `/entry/<private-id>/history/` killed the whole 2026-09-04 pre-deadline run.
   `track_team._get_json` now retries 429/500/502/503/504 plus connection and
   timeout errors over 4 attempts with jitter; `build_board.py` already imported
   it, and `score_gw.py` now routes its two fetches through it. Same commit
@@ -259,7 +259,7 @@ Pushed to `main`, CI green (run 34179506259).
 The three Windows scheduled tasks (`fplbench lineup thu`, `lineup fri-early`,
 `Friday lineup`) were **Disabled and pointing at the dead pre-reorg path**.
 Both fixed: they are Ready and now execute
-`C:\Users\pasca\dev\projects\fplbench\main\scripts\friday_lineup.cmd`.
+`scripts\friday_lineup.cmd` from the repository root.
 
 ## Next acceptance check
 
