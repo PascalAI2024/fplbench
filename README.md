@@ -16,6 +16,7 @@ LightGBM forecasts, and a public post-gameweek scoring record.
 [Dataset](https://huggingface.co/datasets/x0me/fplbench) ·
 [Results](RESULTS.md) ·
 [Current work](CURRENT_WORK.md) ·
+[macOS setup](docs/MAC_SETUP.md) ·
 [Frozen forecasts](outputs/predictions/) ·
 [Official team](https://fantasy.premierleague.com/entry/4770634/history) ·
 [Portfolio](https://github.com/PascalAI2024/portfolio)
@@ -101,15 +102,22 @@ published comparison.
 
 ---
 
-## Reproduce (3 commands)
+## Reproduce
+
+CBC must be installed as a native executable on `PATH`; the optimizer uses
+PuLP's `COIN_CMD` rather than PuLP's bundled solver.
 
 ```bash
+brew install cbc  # macOS; Ubuntu package: coinor-cbc
 pip install -e .
 python scripts/build_all.py
 pytest
 ```
 
-Writes `data/processed/panel.parquet`, `outputs/models/*`, and validation metrics. Optional: `pip install -e ".[dev]"` if you want an explicit dev extra.
+Writes `data/processed/panel.parquet`, `outputs/models/*`, and validation metrics.
+Optional: `pip install -e ".[dev]"` if you want an explicit dev extra. See the
+[portable macOS guide](docs/MAC_SETUP.md) for an isolated virtual environment,
+Apple Silicon verification, and safe troubleshooting.
 
 ---
 
@@ -275,24 +283,26 @@ Live score after a finished and data-checked GW:
 python scripts/score_gw.py --gw 1 --preds outputs/predictions/gw1_2026-27.csv
 ```
 
-## Lineup automation (local)
+## Deadline and lineup operations
 
-The starting XI of the live team (entry 4770634) is set by a Windows scheduled
-task on the operator machine, not by CI:
+GitHub Actions owns the public-data loop: the existing Thursday/Friday jobs
+create pre-deadline forecasts, while the post-gameweek jobs score only
+officially finished and data-checked events. The freeze guard makes repeated
+pre-deadline publication safe and rejects an overwrite after the cutoff.
 
-- `scripts/friday_lineup.cmd` pipes `scripts/friday_lineup.prompt.md` into a
-  headless Claude run. Three self-gating schtasks slots fire per week because
-  FPL deadlines move around.
-- **Deadline gate**: each run first reads the next deadline from the public
-  bootstrap API and exits unless it is 20 minutes to 36 hours away (and not
-  already applied for that GW), so extra slots are harmless no-ops.
-- It only reorders the owned 15 (formation-valid XI + captain/vice + bench
-  order, maximizing `e_points_final` from the latest committed predictions).
-  **Transfers are never applied automatically** — at most a suggestion is
-  written to the log.
-- Requires Chrome open and logged into fantasy.premierleague.com on the
-  operator machine (the run uses the existing browser session; it never
-  handles credentials). Each run appends to `outputs/friday_lineup_log.md`.
+Account actions are deliberately separate from CI. The three legacy Windows
+scheduled tasks are disabled. When an operator uses a Codex deadline routine,
+there must be only one self-rescheduling occurrence per gameweek, set from the
+official deadline rather than a second polling schedule. It may act only in
+the approved window and must read back the saved state before recording
+success.
+
+The repository never stores login credentials. Transfers, chips, hits, and
+lineup changes require the current authorization and experiment rules; the
+default experiment remains model-selected free transfers, no points hits, and
+no chip unless a separate approval explicitly changes that rule. Operational
+state belongs in a sanitized `outputs/progress/` record, while actual scores
+remain absent until official verification.
 
 ## NFLBench feasibility spike (local)
 

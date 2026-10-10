@@ -12,6 +12,15 @@ GW1 provenance is explicit: the current file is byte-identical to the original
 pre-deadline commit (`4b970a8`), after a post-deadline overwrite was preserved
 in Git history and explicitly restored in `2981de1`.
 
+GW6 was generated deterministically before the 2026-10-10 10:00 UTC deadline
+from a validated 667-player official snapshot and 3,216 completed current-season
+fixture-history rows. `gw6_2026-27.csv` has 667 unique player rows and SHA-256
+`37a81e7b5756a8fd7e7c631abea3ef08128e0aaa967c15637a7b77abdd9cfca2`.
+It is a frozen, **unscored forecast**, not an actual-points result. The
+sanitized saved-team observation and separately labelled model projection are
+recorded in [`../progress/gw6_2026-27.json`](../progress/gw6_2026-27.json);
+raw history and authenticated execution receipts are not published.
+
 ## `val_2025-26.csv`
 
 Per-player validation predictions for 2025-26.

@@ -28,6 +28,12 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Install native CBC solver
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes coinor-cbc
+          cbc -stop
+
       - name: Install package
         run: pip install -e ".[dev]"
 

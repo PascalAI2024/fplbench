@@ -1,5 +1,41 @@
 # fplbench — current work
 
+## October 10, 2026: GW6 forecast, saved team, and portable solver
+
+The current-season repair is now materialized as a deterministic GW6 forecast.
+The public forecast contains 667 unique players, targets event 6 before its
+2026-10-10 10:00 UTC deadline, and has SHA-256
+`37a81e7b5756a8fd7e7c631abea3ef08128e0aaa967c15637a7b77abdd9cfca2`.
+Its validated official-history input covered all 667 current players across
+3,216 GW1–5 fixture rows. Those raw history inputs and authenticated receipts
+remain private; only the forecast and a sanitized progress record are public.
+
+**Observed saved state:** two free transfers were saved and read back before
+the deadline: Enzo to Rogers and Milenković to Schuster, for zero points. No
+chip was used, no free transfers remained, and the bank remained £0.2m. The
+saved 3-4-3 is Kinsky; Tarkowski, Schuster, Diop; Rogers (C), B.Fernandes (V),
+Szoboszlai, Anderson; Haaland, Evanilson, Calvert-Lewin. Bench order: Pickford,
+Groß, Konsa, Aina.
+
+**Model projection, not an observation:** the saved team projects to 55.292
+points versus 50.701 for holding, a projected gain of 4.592. GW6 is unplayed
+and unscored; actual points remain absent until FPL marks the event both
+`finished` and `data_checked`.
+
+The optimizer now uses the native CBC executable on `PATH` through three
+`pulp.COIN_CMD` calls. Homebrew CBC 2.10.13 on arm64 passed its solver smoke
+test; the source repair suite recorded 170 passed and 1 skipped. CI installs
+the same system solver explicitly, and [`docs/MAC_SETUP.md`](docs/MAC_SETUP.md)
+documents a portable Apple Silicon setup without signing or security changes.
+The final publication suite, including the sanitized-progress binding test,
+passes 171 tests with 1 skip.
+
+The existing GitHub deadline workflow remains the public-data scheduler. This
+update did not create another automation: the historical one-occurrence Codex
+deadline routine described below must be reused or explicitly replaced in its
+own owning task, never duplicated. Experiment rules remain model-selected free
+transfers, no points hits, and no chip unless separately authorized.
+
 ## October 10, 2026: isolated current-season feature correction
 
 Owner: delegated Codex task `2026-10-08/task-2`; source branch

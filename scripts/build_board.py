@@ -25,8 +25,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
+import hashlib
 import html
+import json
 import posixpath
 import re
 import sys
@@ -61,6 +64,7 @@ PORTFOLIO_URL = "https://github.com/PascalAI2024/portfolio"
 RESULTS_URL = f"{GITHUB_URL}/blob/main/RESULTS.md"
 DEFAULT_OUT = ROOT / "outputs" / "board"
 DEFAULT_RESULTS = ROOT / "RESULTS.md"
+DEFAULT_PROGRESS_DIR = ROOT / "outputs" / "progress"
 
 POS_BY_TYPE = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
 # Vertical placement per XI row, % of pitch height (GK at the bottom).
@@ -105,6 +109,8 @@ The board is regenerated from public FPL data by
 [`scripts/build_board.py`](https://github.com/PascalAI2024/fplbench/blob/main/scripts/build_board.py).
 Live and post-match-review values remain visibly provisional. Model scores are
 published only when FPL marks the gameweek both `finished` and `data_checked`.
+The progress card keeps saved-state observations separate from unscored model
+projections; raw operational receipts and authentication data are not published.
 """
 
 
@@ -252,6 +258,86 @@ def page_links(page: str) -> list[dict[str, str]]:
     return parser.links
 
 
+def _public_progress_values(value: Any) -> None:
+    """Reject private operational material from the tracked public record."""
+    forbidden_keys = {
+        "account",
+        "account_id",
+        "browser_session",
+        "cookie",
+        "entry_id",
+        "password",
+        "receipt",
+        "source_thread_id",
+        "token",
+    }
+    if isinstance(value, dict):
+        bad = forbidden_keys.intersection(str(key).casefold() for key in value)
+        if bad:
+            raise ValueError(f"public progress contains private keys: {sorted(bad)}")
+        for item in value.values():
+            _public_progress_values(item)
+    elif isinstance(value, list):
+        for item in value:
+            _public_progress_values(item)
+    elif isinstance(value, str):
+        lowered = value.casefold()
+        private_markers = ("/users/", "c:\\users\\", "bearer ", "ghp_", "github_pat_", "hf_")
+        if any(marker in lowered for marker in private_markers):
+            raise ValueError("public progress contains a private path or credential marker")
+
+
+def load_progress_record(path: Path, *, project_root: Path = ROOT) -> dict[str, Any]:
+    """Load one sanitized progress record and bind it to its frozen forecast."""
+    progress = json.loads(path.read_text(encoding="utf-8"))
+    _public_progress_values(progress)
+    if progress.get("schema_version") != 1:
+        raise ValueError(f"unsupported progress schema in {path}")
+
+    gameweek = int(progress.get("gameweek") or 0)
+    if gameweek < 1:
+        raise ValueError(f"invalid gameweek in {path}")
+    deadline = dt.datetime.fromisoformat(str(progress["deadline_utc"]))
+    if deadline.tzinfo is None:
+        raise ValueError(f"deadline must include a timezone in {path}")
+
+    forecast = progress.get("forecast") or {}
+    relative = Path(str(forecast.get("path") or ""))
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError(f"forecast path must stay inside the repository in {path}")
+    root = project_root.resolve()
+    forecast_path = (root / relative).resolve()
+    if not forecast_path.is_relative_to(root) or not forecast_path.is_file():
+        raise ValueError(f"forecast is missing or outside the repository in {path}")
+    digest = hashlib.sha256(forecast_path.read_bytes()).hexdigest()
+    if digest != forecast.get("sha256"):
+        raise ValueError(f"forecast SHA-256 mismatch in {path}")
+    with forecast_path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    if len(rows) != int(forecast.get("rows") or -1):
+        raise ValueError(f"forecast row-count mismatch in {path}")
+    if {int(row.get("event") or 0) for row in rows} != {gameweek}:
+        raise ValueError(f"forecast event mismatch in {path}")
+    if forecast.get("status") != "frozen_pre_deadline_unscored":
+        raise ValueError(f"forecast must remain explicitly unscored in {path}")
+
+    observation = progress.get("saved_team_observation") or {}
+    if observation.get("status") != "saved_and_read_back":
+        raise ValueError(f"saved team observation is not verified in {path}")
+    projection = progress.get("model_projection") or {}
+    if projection.get("status") != "unscored_projection_not_actual_points":
+        raise ValueError(f"model projection label is unsafe in {path}")
+    actual = progress.get("actual_outcome") or {}
+    if actual.get("points") is not None or actual.get("status") != "pending_official_verification":
+        raise ValueError(f"unverified actual outcome must remain empty in {path}")
+    return progress
+
+
+def load_latest_progress(root: Path = DEFAULT_PROGRESS_DIR) -> dict[str, Any] | None:
+    records = [load_progress_record(path) for path in sorted(root.glob("gw*_*.json"))]
+    return max(records, key=lambda item: int(item["gameweek"])) if records else None
+
+
 # ---------------------------------------------------------------- rendering
 
 
@@ -381,6 +467,28 @@ def mae_table_html(mae_rows: dict[int, dict]) -> str:
         '<th scope="col">mae_ep_next_played</th></tr></thead><tbody>'
         + "".join(body)
         + "</tbody></table></div>"
+    )
+
+
+def progress_card_html(progress: dict[str, Any] | None) -> str:
+    if progress is None:
+        return '<p class="progress-card">No sanitized forecast progress is published yet.</p>'
+    gw = int(progress["gameweek"])
+    forecast = progress["forecast"]
+    observed = progress["saved_team_observation"]
+    projection = progress["model_projection"]
+    chip = "no chip" if observed.get("chip_used") is None else "chip used"
+    return (
+        '<section class="progress-card" aria-labelledby="progress-heading">'
+        f'<h3 id="progress-heading">GW{gw} forecast progress</h3>'
+        f'<p><strong>Frozen forecast:</strong> {int(forecast["rows"])} players · '
+        f'SHA {html.escape(str(forecast["sha256"])[:12])}…</p>'
+        f'<p><strong>Observed:</strong> saved and read back · '
+        f'{int(observed["free_transfers_used"])} free transfers · '
+        f'{int(observed["points_cost"])}-point cost · {chip}.</p>'
+        f'<p><strong>Projected:</strong> +{float(projection["gain_vs_hold"]):.3f} '
+        'points vs hold. <b>Unscored; not actual points.</b></p>'
+        "</section>"
     )
 
 
@@ -642,6 +750,26 @@ PAGE = """<!DOCTYPE html>
     font-size: 12px;
     line-height: 1.5;
   }}
+  .progress-card {{
+    margin: 2px 0 8px;
+    padding: 10px 11px;
+    border: 1px solid rgba(223,243,106,0.2);
+    border-radius: 9px;
+    background: rgba(223,243,106,0.045);
+    color: #a9bdad;
+    font-size: 10px;
+    line-height: 1.4;
+  }}
+  .progress-card h3 {{
+    margin: 0 0 6px;
+    color: #dff36a;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }}
+  .progress-card p {{ margin: 3px 0; }}
+  .progress-card strong {{ color: #e8f6ec; }}
+  .progress-card b {{ color: #f0c14b; }}
   .actions {{
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -901,6 +1029,7 @@ PAGE = """<!DOCTYPE html>
       <div class="eyebrow">open model · public record</div>
       <h2 id="panel-heading">Frozen before deadline. Scored after verification.</h2>
       <p class="panel-intro">The same forecast ranks the public squad and becomes the weekly benchmark artifact. {state_note}</p>
+      {progress_card}
       <nav class="actions" aria-label="Project links">
         <a class="action" href="{dataset_url}" target="_blank" rel="noopener noreferrer">Explore data</a>
         <a class="action" href="{github_url}" target="_blank" rel="noopener noreferrer">Inspect code</a>
@@ -1162,6 +1291,7 @@ def validate_page(page: str) -> None:
         ':focus-visible',
         PORTFOLIO_URL,
         'aria-label="Club preview pages"',
+        "Unscored; not actual points.",
     )
     missing = [token for token in required if token not in page]
     if missing:
@@ -1247,6 +1377,7 @@ def validate_site(site: dict[Path, str], teams: list[dict[str, Any]]) -> None:
 
 def build_page(results_path: Path, *, bootstrap: dict | None = None) -> str:
     bootstrap = bootstrap or fetch_bootstrap()
+    progress = load_latest_progress()
     teams = official_teams(bootstrap)
     ctx = gw_context(bootstrap)
     got = fetch_picks(ENTRY_ID, ctx)
@@ -1303,6 +1434,7 @@ def build_page(results_path: Path, *, bootstrap: dict | None = None) -> str:
         shown_gw=shown_gw,
         score_status=html.escape(score_status),
         state_note=html.escape(state_note),
+        progress_card=progress_card_html(progress),
         deadline_label=html.escape(deadline_label),
         deadline_js=deadline_js,
         captain=html.escape(str(captain)),

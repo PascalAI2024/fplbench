@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -91,6 +92,9 @@ def test_board_is_responsive_accessible_and_explicitly_provisional(
     assert "width: 1280px" not in page
     assert "GW1 under review" in page
     assert "remain provisional" in page
+    assert "GW6 forecast progress" in page
+    assert "+4.592 points vs hold" in page
+    assert "Unscored; not actual points." in page
     assert 'role="img"' in page
     assert '<caption class="sr-only">' in page
     assert 'scope="col"' in page
@@ -113,6 +117,27 @@ def test_board_is_responsive_accessible_and_explicitly_provisional(
         build_board.validate_page(
             page.replace(' target="_blank" rel="noopener noreferrer"', "", 1)
         )
+
+
+def test_public_progress_is_sanitized_and_bound_to_the_frozen_forecast(tmp_path: Path):
+    root = Path(__file__).resolve().parents[1]
+    path = root / "outputs" / "progress" / "gw6_2026-27.json"
+    progress = build_board.load_progress_record(path)
+    assert progress["forecast"]["rows"] == 667
+    assert progress["saved_team_observation"]["status"] == "saved_and_read_back"
+    assert progress["model_projection"]["gain_vs_hold"] == 4.592
+    assert progress["actual_outcome"]["points"] is None
+
+    public_text = path.read_text(encoding="utf-8").casefold()
+    for forbidden in ("entry_id", "source_thread_id", "/users/", "receipt", "token"):
+        assert forbidden not in public_text
+
+    tampered = json.loads(path.read_text(encoding="utf-8"))
+    tampered["forecast"]["sha256"] = "0" * 64
+    tampered_path = tmp_path / "tampered.json"
+    tampered_path.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        build_board.load_progress_record(tampered_path)
 
 
 def test_site_builds_exact_index_plus_twenty_club_pages_with_no_broken_links(
@@ -249,6 +274,7 @@ def test_space_metadata_and_workflow_safety_contracts():
     assert "app_file: index.html" in build_board.SPACE_README
     assert "fullWidth: true" in build_board.SPACE_README
     assert "license: other" in build_board.SPACE_README
+    assert "unscored model\nprojections" in build_board.SPACE_README
     metadata = build_board.SPACE_README.split("---", 2)[1]
     short_description = next(
         line.split(":", 1)[1].strip().strip('"')
@@ -266,6 +292,11 @@ def test_space_metadata_and_workflow_safety_contracts():
     assert "group: fplbench-live-${{ github.ref }}" in live
     assert "permissions:\n  contents: read" in publish
     assert "group: fplbench-hf-publication" in publish
+    quality = (root / ".github" / "workflows" / "quality.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "coinor-cbc" in quality
+    assert "coinor-cbc" in publish
     for prohibited in ("predict_live.py", "score_gw.py", "track_team.py"):
         assert prohibited not in publish
 
