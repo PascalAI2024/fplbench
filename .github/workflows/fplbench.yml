@@ -2,7 +2,7 @@
 #
 # Predict entrypoint (local / CI):
 #   python scripts/predict_live.py
-#   # or: python -c "from fplbench.ingest import download_live; from fplbench.predict import predict_next_gw; download_live(); predict_next_gw()"
+#   # or: download_live(); download_live_history(); predict_next_gw()
 #
 # Post-GW entrypoint:
 #   python scripts/score_gw.py
@@ -89,8 +89,14 @@ jobs:
       - name: Train models
         run: python -c "from fplbench.train import train, train_quantile_heads; train(); train_quantile_heads()"
 
-      - name: Live ingest + predict
-        run: python scripts/predict_live.py
+      - name: Download live metadata snapshot
+        run: python -c "from fplbench.ingest import download_live; download_live()"
+
+      - name: Acquire official current-season histories
+        run: python -c "from fplbench.ingest import download_live_history; download_live_history()"
+
+      - name: Predict from bound live inputs
+        run: python -c "from fplbench.predict import predict_next_gw; predict_next_gw()"
 
       - name: Commit predictions
         run: |
@@ -157,7 +163,14 @@ jobs:
 
       # Track only after scoring completed or intentionally no-op'd.
       - name: Track team performance
-        run: python scripts/track_team.py
+        env:
+          FPLBENCH_ENTRY_ID: ${{ secrets.FPLBENCH_ENTRY_ID }}
+        run: |
+          if [[ -z "${FPLBENCH_ENTRY_ID:-}" ]]; then
+            echo "Private FPL entry id is not configured; preserving the existing sanitized team table."
+            exit 0
+          fi
+          python scripts/track_team.py
 
       - name: Commit RESULTS.md
         run: |

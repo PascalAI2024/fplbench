@@ -1,4 +1,4 @@
-"""Track the model's live FPL team ("The Leakage-Safe XI", entry 4770634).
+"""Track the model's live FPL team ("The Leakage-Safe XI").
 
 Rewrites the `## Team — …` section of RESULTS.md from the official FPL API:
 per-GW points vs the global average, captain, overall rank, and running total.
@@ -6,14 +6,16 @@ Idempotent — the whole section is rebuilt on every run. Verified gameweeks
 are final; live and post-match-review rows are labeled provisional.
 
 Usage:
-  python scripts/track_team.py
-  python scripts/track_team.py --results RESULTS.md --entry 4770634
+  FPLBENCH_ENTRY_ID=<private-id> python scripts/track_team.py
+  python scripts/track_team.py --results RESULTS.md --entry <private-id>
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -25,14 +27,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-ENTRY_ID = 4770634
 TEAM_NAME = "The Leakage-Safe XI"
-TEAM_URL = f"https://fantasy.premierleague.com/entry/{ENTRY_ID}/history"
+ENTRY_ENV = "FPLBENCH_ENTRY_ID"
 HEADERS = {"User-Agent": "fplbench/0.1 (research; leakage-safe FPL panel)"}
 API = "https://fantasy.premierleague.com/api"
 DEFAULT_RESULTS = ROOT / "RESULTS.md"
 
-SECTION_HEADING = f"## Team — {TEAM_NAME} (entry {ENTRY_ID})"
+SECTION_HEADING = f"## Team — {TEAM_NAME}"
 TEAM_TABLE_COLS = (
     "GW",
     "pts",
@@ -50,6 +51,20 @@ TEAM_TABLE_COLS = (
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 MAX_ATTEMPTS = 4
 BACKOFF_BASE = 2.0
+
+
+def configured_entry_id() -> int | None:
+    """Return the private runtime entry id without embedding it in public source."""
+    raw = os.environ.get(ENTRY_ENV, "").strip()
+    if not raw:
+        return None
+    try:
+        entry_id = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{ENTRY_ENV} must be a positive integer") from exc
+    if entry_id <= 0:
+        raise ValueError(f"{ENTRY_ENV} must be a positive integer")
+    return entry_id
 
 
 def _get_json(url: str) -> dict:
@@ -87,8 +102,11 @@ def _captain(entry_id: int, gw: int, names: dict[int, str]) -> str:
     return "—"
 
 
-def build_team_rows(entry_id: int = ENTRY_ID) -> list[dict[str, Any]]:
+def build_team_rows(entry_id: int | None = None) -> list[dict[str, Any]]:
     """One row per visible GW, with explicit live/review/final status."""
+    entry_id = entry_id or configured_entry_id()
+    if entry_id is None:
+        raise ValueError(f"pass entry_id or set {ENTRY_ENV}")
     bootstrap = _get_json(f"{API}/bootstrap-static/")
     events = {int(e["id"]): e for e in bootstrap.get("events") or []}
     names = {int(e["id"]): e["web_name"] for e in bootstrap.get("elements") or []}
@@ -151,16 +169,67 @@ def team_table_md(rows: list[dict[str, Any]]) -> str:
 
 def render_section(rows: list[dict[str, Any]]) -> str:
     blurb = (
-        f"The model's own squad in the official FPL game — "
-        f"[live team page]({TEAM_URL}). Rewritten from the official API on "
-        f"every post-GW run. Rows remain marked live or review until FPL sets "
-        f"both `finished` and `data_checked`."
+        "The model's own squad in the official FPL game. Rewritten from the "
+        "official API using a privately supplied entry identifier on every "
+        "post-GW run. Public outputs omit that identifier. Rows remain marked "
+        "live or review until FPL sets both `finished` and `data_checked`."
     )
     if not rows:
         body = "No public team record is available yet."
     else:
         body = team_table_md(rows)
     return f"{SECTION_HEADING}\n\n{blurb}\n\n{body}"
+
+
+def parse_team_rows(text: str) -> list[dict[str, Any]]:
+    """Parse the sanitized public team table without needing the private id."""
+    lines = text.splitlines()
+    heading = next(
+        (i for i, line in enumerate(lines) if line.strip().startswith(SECTION_HEADING)),
+        None,
+    )
+    if heading is None:
+        return []
+    header = next(
+        (
+            i
+            for i in range(heading + 1, len(lines))
+            if lines[i].strip().casefold().startswith("| gw | pts | gw avg |")
+        ),
+        None,
+    )
+    if header is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in lines[header + 2 :]:
+        if not line.strip().startswith("|"):
+            break
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) != len(TEAM_TABLE_COLS):
+            continue
+        match = re.fullmatch(r"(\d+)(?:\s+\((live|review|final)\))?", cells[0])
+        if not match:
+            continue
+        status = match.group(2) or "final"
+
+        def integer(value: str) -> int | None:
+            value = value.replace(",", "").strip()
+            return int(value) if value else None
+
+        rows.append(
+            {
+                "gw": int(match.group(1)),
+                "live": status != "final",
+                "status": status,
+                "points": integer(cells[1]),
+                "average": integer(cells[2]),
+                "vs_avg": integer(cells[3].lstrip("+")),
+                "captain": cells[4] or "—",
+                "overall_rank": integer(cells[5]),
+                "total_points": integer(cells[6]),
+            }
+        )
+    return rows
 
 
 def upsert_team_section(path: Path, section: str) -> None:
@@ -186,7 +255,12 @@ def upsert_team_section(path: Path, section: str) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=f"Track {TEAM_NAME} in RESULTS.md")
-    p.add_argument("--entry", type=int, default=ENTRY_ID, help="FPL entry id")
+    p.add_argument(
+        "--entry",
+        type=int,
+        default=configured_entry_id(),
+        help=f"private FPL entry id (or set {ENTRY_ENV})",
+    )
     p.add_argument(
         "--results",
         type=Path,
@@ -195,10 +269,13 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = p.parse_args(argv)
 
+    if args.entry is None:
+        p.error(f"--entry or {ENTRY_ENV} is required")
+
     rows = build_team_rows(args.entry)
     section = render_section(rows)
     upsert_team_section(args.results, section)
-    print(f"{len(rows)} gameweek row(s) for entry {args.entry}")
+    print(f"{len(rows)} gameweek row(s)")
     print(section)
     print(f"wrote {args.results}")
 

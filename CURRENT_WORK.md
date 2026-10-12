@@ -1,5 +1,118 @@
 # fplbench — current work
 
+## October 10, 2026: official live-history acquisition repair
+
+Manual pre-deadline run
+[`38038374950`](https://github.com/PascalAI2024/fplbench/actions/runs/38038374950)
+on `a7e8376` downloaded the historical panel and raw season files and trained
+the models successfully, then failed during live inference at 08:35 UTC with
+`LiveHistoryError: missing history_manifest.json`. Prediction commit and board
+publication were correctly skipped. The root cause was an orchestration gap:
+the strict mid-season validator required a current-season official history
+bundle, but neither the workflow nor `scripts/predict_live.py` acquired it.
+
+The live loop now downloads one exact bootstrap/fixture snapshot, retrieves the
+public official `element-summary` history for every current element with bounded
+parallelism and transient retries, writes original per-element row counts, and
+binds the resulting CSV to the snapshot hashes in `history_manifest.json`.
+Acquisition is all-or-nothing: malformed or incomplete responses do not replace
+an existing bundle, and the manifest is published last. Inference retains all
+existing season, cutoff, fixture-completion, stable-code, cumulative-coverage,
+and feature-field checks; no fallback was introduced.
+The acquisition/provenance regressions pass 48 focused tests; the complete
+local suite passes 174 tests with 1 skip. Python compilation and Git whitespace
+checks also pass.
+
+The GW6 deadline passed at 10:00 UTC, so this repair must not replay the
+pre-deadline job retrospectively. The already committed 667-player forecast and
+sanitized board remain frozen and unscored with SHA-256
+`37a81e7b5756a8fd7e7c631abea3ef08128e0aaa967c15637a7b77abdd9cfca2`.
+No team action, credential flow, new automation, or raw-history publication is
+part of this repair.
+
+## October 10, 2026: GW6 forecast, saved team, and portable solver
+
+The current-season repair is now materialized as a deterministic GW6 forecast.
+The public forecast contains 667 unique players, targets event 6 before its
+2026-10-10 10:00 UTC deadline, and has SHA-256
+`37a81e7b5756a8fd7e7c631abea3ef08128e0aaa967c15637a7b77abdd9cfca2`.
+Its validated official-history input covered all 667 current players across
+3,216 GW1–5 fixture rows. Those raw history inputs and authenticated receipts
+remain private; only the forecast and a sanitized progress record are public.
+
+**Observed saved state:** two free transfers were saved and read back before
+the deadline: Enzo to Rogers and Milenković to Schuster, for zero points. No
+chip was used, no free transfers remained, and the bank remained £0.2m. The
+saved 3-4-3 is Kinsky; Tarkowski, Schuster, Diop; Rogers (C), B.Fernandes (V),
+Szoboszlai, Anderson; Haaland, Evanilson, Calvert-Lewin. Bench order: Pickford,
+Groß, Konsa, Aina.
+
+**Model projection, not an observation:** the saved team projects to 55.292
+points versus 50.701 for holding, a projected gain of 4.592. GW6 is unplayed
+and unscored; actual points remain absent until FPL marks the event both
+`finished` and `data_checked`.
+
+The optimizer now uses the native CBC executable on `PATH` through three
+`pulp.COIN_CMD` calls. Homebrew CBC 2.10.13 on arm64 passed its solver smoke
+test; the source repair suite recorded 170 passed and 1 skipped. CI installs
+the same system solver explicitly, and [`docs/MAC_SETUP.md`](docs/MAC_SETUP.md)
+documents a portable Apple Silicon setup without signing or security changes.
+The final publication suite, including the sanitized-progress binding test,
+passes 171 tests with 1 skip.
+
+The first Linux CI replay exposed PuLP 4.0's removal of the deprecated
+`LpVariable.dicts` and integer `LpStatus` interfaces. Variable creation and
+status handling now use the compatible problem APIs, and each `COIN_CMD`
+receives the exact native `cbc` path instead of accepting a package-bundled
+default. The full 171-pass suite succeeds against both PuLP 3.3.2 and 4.0.0.
+
+The existing GitHub deadline workflow remains the public-data scheduler. This
+update did not create another automation: the historical one-occurrence Codex
+deadline routine described below must be reused or explicitly replaced in its
+own owning task, never duplicated. Experiment rules remain model-selected free
+transfers, no points hits, and no chip unless separately authorized.
+
+## October 10, 2026: isolated current-season feature correction
+
+Owner: delegated Codex task `2026-10-08/task-2`; source branch
+`codex/current-season-features` in its isolated `engine-fix` checkout. Base
+`fae0a9f81fe9da6258c6bc1667cd29b71bae7ccb`. The original Windows checkout and
+the frozen planner-validation packet are preserved read-only. This is a new
+source correction, not a reconstruction of the unavailable reviewed repair ZIP.
+
+The live predictor previously joined 2025/26 end-of-season rolling form for
+every GW. It now restricts that cold start to GW1. Later player/opponent form
+uses validated current-season fixture history and the same lag implementation
+as training. Previous-season aggregate priors and set-piece orders remain
+separate. Metadata, season, target-GW, fixture date/completion, response row
+counts, cumulative coverage, and deadline boundaries are checked before model
+inference. At this source-correction stage no player-history downloader,
+credential flow, publication, or live team action was added; the acquisition
+gap was subsequently closed by the workflow repair above.
+
+Full final local suite: 169 passed. Changed-file Ruff checks and Git whitespace
+checks pass. The source correction is tested; current-season forecasting is
+blocked by missing input data.
+Fresh official bootstrap and fixture metadata captured October 10 at
+00:04:14 UTC resolve GW6 and 667 elements. Read-only preparation against the
+existing 139,029-row local panel stops at `missing history_manifest.json`;
+the panel contains only 2021/22 through 2025/26. No current-season forecast was
+generated. Exact new required bundle files, raw fields, provenance, and cutoff
+rules are in the task's `engine-fix-input-audit.json` and the README.
+
+Next acceptance check: materialize a previously authorized official history
+bundle, verify complete current-season coverage and cutoff provenance, then
+generate and independently evaluate a fresh forecast. Its predictive error
+and calibration remain unmeasured. Do not use this source-only correction or
+the old under-review forecasts for live transfers. Existing no-hit/no-chip and
+model-only experiment rules remain intact.
+
+Preservation boundary: all new source/data/evidence stays inside this task's
+isolated checkout and final frozen handoff. Parent should pass the immutable
+receipt to preservation owner `01a122f8-eded-7454-ad7e-9e39c5b5a0d1`; no original
+FPL files should be snapshotted as changed by this correction. No remote backup
+or Mac replay is implied by local commits or archives.
+
 Updated September 18, 2026. Repo: `projects/fplbench/main` (moved here in the
 2026-09-07 workspace reorg, out of the retired `dev\fplbench`). Origin:
 https://github.com/PascalAI2024/fplbench.
@@ -190,7 +303,7 @@ is required before recording success. New blockers and missed deadlines must ale
 unchanged/non-actionable checks stay quiet. No private browser API calls or tokens.
 
 All three legacy Windows FPLBench tasks are verified Disabled. Their XML backups
-are in `C:/Users/pasca/dev/_archive/fplbench/2026-09-18/scheduler/`.
+are retained in the private scheduler archive.
 The heartbeat configuration was verified on disk and through automation view;
 an unattended authenticated save has NOT yet been demonstrated. Chrome is reachable
 but FPL was signed out; its login tab was left open for the user. No team change,
@@ -213,7 +326,7 @@ that the legacy tasks are Ready or unattended team management is proven.
 ### September 10: GW4 deadline preparation
 
 **Live update completed after the user explicitly instructed execution now.**
-The signed-in official FPL UI showed entry 4770634, 3 free transfers, zero bank,
+The signed-in official FPL UI for the privately configured entry showed 3 free transfers, zero bank,
 and actual selling prices. Applied the model's three free transfers:
 Trafford to Pickford, Van Hecke to Konsa, Gakpo to Enzo. Confirmation showed
 0 points cost; bank after was GBP 0.2m. Saved the model XI and verified all
@@ -271,7 +384,7 @@ Model MAE improves every week so far. GW3 is the first week the model beat
 FPL's own `ep_next` on the players-who-played split, which had gone against it
 in GW1 and GW2.
 
-The Leakage-Safe XI (entry 4770634): 53 / 102 / 51 = **206 points**, overall
+The Leakage-Safe XI: 53 / 102 / 51 = **206 points**, overall
 rank 1,658,210. Zero transfers all season — by design, transfers are never
 applied automatically.
 
@@ -280,7 +393,7 @@ applied automatically.
 Pushed to `main`, CI green (run 34179506259).
 
 - `add785b` — retry/backoff on transient FPL API errors. A single 503 from
-  `/entry/4770634/history/` killed the whole 2026-09-04 pre-deadline run.
+  `/entry/<private-id>/history/` killed the whole 2026-09-04 pre-deadline run.
   `track_team._get_json` now retries 429/500/502/503/504 plus connection and
   timeout errors over 4 attempts with jitter; `build_board.py` already imported
   it, and `score_gw.py` now routes its two fetches through it. Same commit
@@ -301,7 +414,7 @@ Pushed to `main`, CI green (run 34179506259).
 The three Windows scheduled tasks (`fplbench lineup thu`, `lineup fri-early`,
 `Friday lineup`) were **Disabled and pointing at the dead pre-reorg path**.
 Both fixed: they are Ready and now execute
-`C:\Users\pasca\dev\projects\fplbench\main\scripts\friday_lineup.cmd`.
+`scripts\friday_lineup.cmd` from the repository root.
 
 ## Next acceptance check
 

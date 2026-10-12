@@ -16,8 +16,8 @@ LightGBM forecasts, and a public post-gameweek scoring record.
 [Dataset](https://huggingface.co/datasets/x0me/fplbench) ·
 [Results](RESULTS.md) ·
 [Current work](CURRENT_WORK.md) ·
+[macOS setup](docs/MAC_SETUP.md) ·
 [Frozen forecasts](outputs/predictions/) ·
-[Official team](https://fantasy.premierleague.com/entry/4770634/history) ·
 [Portfolio](https://github.com/PascalAI2024/portfolio)
 
 The operating contract is simple: generate and commit the forecast before the
@@ -101,15 +101,22 @@ published comparison.
 
 ---
 
-## Reproduce (3 commands)
+## Reproduce
+
+CBC must be installed as a native executable on `PATH`; the optimizer uses
+PuLP's `COIN_CMD` rather than PuLP's bundled solver.
 
 ```bash
+brew install cbc  # macOS; Ubuntu package: coinor-cbc
 pip install -e .
 python scripts/build_all.py
 pytest
 ```
 
-Writes `data/processed/panel.parquet`, `outputs/models/*`, and validation metrics. Optional: `pip install -e ".[dev]"` if you want an explicit dev extra.
+Writes `data/processed/panel.parquet`, `outputs/models/*`, and validation metrics.
+Optional: `pip install -e ".[dev]"` if you want an explicit dev extra. See the
+[portable macOS guide](docs/MAC_SETUP.md) for an isolated virtual environment,
+Apple Silicon verification, and safe troubleshooting.
 
 ---
 
@@ -126,6 +133,49 @@ double gameweek, both fixture rows receive the same lag values that were known
 before the gameweek's first fixture; the second fixture cannot observe the
 first. Feature names end in `_l1`, `_r3`, `_r5`. Live comparison uses
 pre-deadline `ep_next`, also never fed to the model.
+
+Live scoring now enforces the same season and gameweek boundary. GW1 can use
+the immediately preceding season's known form. From GW2 onward, rolling
+player and opponent features come from completed current-season fixture rows;
+prior-season aggregates and set-piece orders remain separate priors. Live
+fixture selection targets the bootstrap's next event exactly. Unsupported
+blank or double gameweeks fail explicitly.
+
+`download_live()` writes `data/raw/live/snapshot_manifest.json`, binding the
+bootstrap and fixture JSON bytes to their official sources, configured season,
+and UTC capture time. `download_live_history()` then requests every current
+element's public official fixture history and atomically writes the CSV plus its
+binding manifest. The pre-deadline workflow runs those phases in that order
+before inference. Scoring rejects snapshots older than 24 hours, snapshots
+observed after its cutoff, and generation at or after the target deadline.
+
+Mid-season scoring additionally requires that complete official history bundle.
+Acquisition is an explicit ingestion phase; the scoring and feature code remains
+offline and never substitutes network data or last-season rolling form:
+
+- `data/raw/live/history.csv`: official per-fixture history with `element`,
+  `fixture`, `round`, `kickoff_time`, `was_home`, and the raw statistics used
+  by the saved model's lag features. Stable codes, positions, clubs, and DefCon
+  labels are derived after fixture/element alignment is checked.
+- `data/raw/live/history_manifest.json`: `format_version: 1`, `season`,
+  `source: "https://fantasy.premierleague.com/api/element-summary/"`,
+  `captured_at_utc`, `history_sha256`, `bootstrap_sha256`, `fixtures_sha256`,
+  `covered_element_ids`, and `history_rows_by_element`. The last field records
+  each original response's row count, with element IDs as string keys.
+
+The manifest covers every current element, including verified empty histories.
+Original response counts detect omitted zero-minute fixtures; cumulative
+minutes, starts, and points cross-check coverage against the exact bound
+bootstrap. They are not substituted for rolling features. Included records
+must precede the target GW and both capture times, match fixture dates/events,
+and have both official fixture completion flags. Conflicting duplicates,
+missing scoring fields, or incomplete coverage stop inference. A missing bundle
+never falls back to last-season rolling form. An acquisition failure leaves the
+previous CSV/manifest pair untouched; the binding manifest is replaced last so
+an interruption cannot make partial history pass validation. Boundary
+regressions are in
+[`tests/test_live_history.py`](tests/test_live_history.py); current engine
+status is in [`CURRENT_WORK.md`](CURRENT_WORK.md).
 
 ---
 
@@ -168,12 +218,12 @@ The current freeze guard rejects post-deadline overwrites of an existing board.
 |----------|------|
 | Dataset | https://huggingface.co/datasets/x0me/fplbench |
 | Responsive benchmark board | https://huggingface.co/spaces/x0me/fplbench-board |
-| **The model's own FPL team** | https://fantasy.premierleague.com/entry/4770634/history |
 | Portfolio | https://github.com/PascalAI2024/portfolio |
 
-The published squad is represented by *The Leakage-Safe XI* in the official
-FPL game. Live points and rank remain provisional until FPL completes its
-review; the public board labels that state explicitly.
+The published squad is represented by *The Leakage-Safe XI*. Its account
+identifier stays in private runtime configuration; the public board carries
+only the sanitized saved-state observation. Points and rank remain provisional
+until FPL completes its review, which the public board labels explicitly.
 
 The corrected export contains **139,029 rows and 165 columns**: 109,282 train
 rows and 29,747 validation rows. Its fixture key, same-GW lag contract, schema,
@@ -239,24 +289,26 @@ Live score after a finished and data-checked GW:
 python scripts/score_gw.py --gw 1 --preds outputs/predictions/gw1_2026-27.csv
 ```
 
-## Lineup automation (local)
+## Deadline and lineup operations
 
-The starting XI of the live team (entry 4770634) is set by a Windows scheduled
-task on the operator machine, not by CI:
+GitHub Actions owns the public-data loop: the existing Thursday/Friday jobs
+create pre-deadline forecasts, while the post-gameweek jobs score only
+officially finished and data-checked events. The freeze guard makes repeated
+pre-deadline publication safe and rejects an overwrite after the cutoff.
 
-- `scripts/friday_lineup.cmd` pipes `scripts/friday_lineup.prompt.md` into a
-  headless Claude run. Three self-gating schtasks slots fire per week because
-  FPL deadlines move around.
-- **Deadline gate**: each run first reads the next deadline from the public
-  bootstrap API and exits unless it is 20 minutes to 36 hours away (and not
-  already applied for that GW), so extra slots are harmless no-ops.
-- It only reorders the owned 15 (formation-valid XI + captain/vice + bench
-  order, maximizing `e_points_final` from the latest committed predictions).
-  **Transfers are never applied automatically** — at most a suggestion is
-  written to the log.
-- Requires Chrome open and logged into fantasy.premierleague.com on the
-  operator machine (the run uses the existing browser session; it never
-  handles credentials). Each run appends to `outputs/friday_lineup_log.md`.
+Account actions are deliberately separate from CI. The three legacy Windows
+scheduled tasks are disabled. When an operator uses a Codex deadline routine,
+there must be only one self-rescheduling occurrence per gameweek, set from the
+official deadline rather than a second polling schedule. It may act only in
+the approved window and must read back the saved state before recording
+success.
+
+The repository never stores login credentials. Transfers, chips, hits, and
+lineup changes require the current authorization and experiment rules; the
+default experiment remains model-selected free transfers, no points hits, and
+no chip unless a separate approval explicitly changes that rule. Operational
+state belongs in a sanitized `outputs/progress/` record, while actual scores
+remain absent until official verification.
 
 ## NFLBench feasibility spike (local)
 

@@ -20,6 +20,7 @@ import pandas as pd
 import pulp
 
 from fplbench.bench import order_bench
+from fplbench.solver import native_cbc_path, solve_status_label
 from fplbench.squad import (
     MAX_PER_CLUB,
     POS_SQUAD,
@@ -141,10 +142,10 @@ def plan_transfers(
     club = pool["team_name"].to_dict()
 
     prob = pulp.LpProblem("fpl_transfers", pulp.LpMaximize)
-    squad = pulp.LpVariable.dicts("s", idx, cat=pulp.LpBinary)
-    start = pulp.LpVariable.dicts("x", idx, cat=pulp.LpBinary)
-    cap = pulp.LpVariable.dicts("c", idx, cat=pulp.LpBinary)
-    hits = pulp.LpVariable("hits", lowBound=0, cat=pulp.LpContinuous)
+    squad = prob.add_variable_dicts("s", idx, cat=pulp.LpBinary)
+    start = prob.add_variable_dicts("x", idx, cat=pulp.LpBinary)
+    cap = prob.add_variable_dicts("c", idx, cat=pulp.LpBinary)
+    hits = prob.add_variable("hits", lowBound=0, cat=pulp.LpContinuous)
 
     # Captain doubles, so a captained starter is counted twice.
     prob += (
@@ -194,10 +195,11 @@ def plan_transfers(
     prob += n_transfers >= min_transfers, "min_transfers"
     prob += hits >= n_transfers - free_transfers, "hits_def"
 
-    status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
-    if pulp.LpStatus[status] != "Optimal":
+    status = prob.solve(pulp.COIN_CMD(path=native_cbc_path(), msg=False))
+    status_label = solve_status_label(status)
+    if status_label != "Optimal":
         raise RuntimeError(
-            f"transfer ILP failed: {pulp.LpStatus[status]} "
+            f"transfer ILP failed: {status_label} "
             "(too few fit players for a legal XI within the transfer limit?)"
         )
 

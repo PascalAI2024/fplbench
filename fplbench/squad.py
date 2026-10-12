@@ -9,6 +9,7 @@ from typing import Any
 import pandas as pd
 import pulp
 
+from fplbench.solver import native_cbc_path, solve_status_label
 
 POS_SQUAD = {"GK": 2, "DEF": 5, "MID": 5, "FWD": 3}
 POS_ORDER = {"GK": 0, "DEF": 1, "MID": 2, "FWD": 3}
@@ -70,7 +71,7 @@ def pick_squad(df: pd.DataFrame) -> SquadResult:
 
     idx = list(pool.index)
     prob = pulp.LpProblem("fpl_squad", pulp.LpMaximize)
-    x = pulp.LpVariable.dicts("p", idx, cat=pulp.LpBinary)
+    x = prob.add_variable_dicts("p", idx, cat=pulp.LpBinary)
 
     prob += pulp.lpSum(pool.loc[i, "e_points_final"] * x[i] for i in idx)
     prob += pulp.lpSum(x[i] for i in idx) == SQUAD_SIZE
@@ -84,9 +85,10 @@ def pick_squad(df: pd.DataFrame) -> SquadResult:
         club_idx = [i for i in idx if pool.loc[i, "team_name"] == club]
         prob += pulp.lpSum(x[i] for i in club_idx) <= MAX_PER_CLUB, f"club_{club}"
 
-    status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
-    if pulp.LpStatus[status] != "Optimal":
-        raise RuntimeError(f"squad ILP failed: {pulp.LpStatus[status]}")
+    status = prob.solve(pulp.COIN_CMD(path=native_cbc_path(), msg=False))
+    status_label = solve_status_label(status)
+    if status_label != "Optimal":
+        raise RuntimeError(f"squad ILP failed: {status_label}")
 
     chosen = [i for i in idx if pulp.value(x[i]) > 0.5]
     squad = _sort_by_pos(pool.loc[chosen]).reset_index(drop=True)
@@ -126,7 +128,7 @@ def pick_xi(squad: pd.DataFrame) -> pd.DataFrame:
     """Best legal XI from a 15-man squad (1 GK, 3-5 DEF, 2-5 MID, 1-3 FWD)."""
     idx = list(squad.index)
     prob = pulp.LpProblem("fpl_xi", pulp.LpMaximize)
-    y = pulp.LpVariable.dicts("xi", idx, cat=pulp.LpBinary)
+    y = prob.add_variable_dicts("xi", idx, cat=pulp.LpBinary)
 
     prob += pulp.lpSum(squad.loc[i, "e_points_final"] * y[i] for i in idx)
     prob += pulp.lpSum(y[i] for i in idx) == XI_SIZE
@@ -144,9 +146,10 @@ def pick_xi(squad: pd.DataFrame) -> pd.DataFrame:
     prob += pulp.lpSum(y[i] for i in fwds) >= XI_FWD[0]
     prob += pulp.lpSum(y[i] for i in fwds) <= XI_FWD[1]
 
-    status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
-    if pulp.LpStatus[status] != "Optimal":
-        raise RuntimeError(f"XI ILP failed: {pulp.LpStatus[status]}")
+    status = prob.solve(pulp.COIN_CMD(path=native_cbc_path(), msg=False))
+    status_label = solve_status_label(status)
+    if status_label != "Optimal":
+        raise RuntimeError(f"XI ILP failed: {status_label}")
 
     chosen = [i for i in idx if pulp.value(y[i]) > 0.5]
     return _sort_by_pos(squad.loc[chosen])
@@ -246,7 +249,7 @@ def format_squad_md(result: SquadResult, *, event_label: str = "GW1 2026/27") ->
         "",
         "## Full 15 (constraint check)",
         "",
-        f"- Positions: "
+        "- Positions: "
         + ", ".join(
             f"{pos}={int((result.squad['position'] == pos).sum())}"
             for pos in ("GK", "DEF", "MID", "FWD")

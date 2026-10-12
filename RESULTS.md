@@ -16,9 +16,12 @@ Until an official gameweek is verified, this table has no scores.
 | 4 | 656 | 1.2974 | 1.2398 | 307 | 2.3294 | 2.2958 |
 | 5 | 659 | 1.3062 | 1.1560 | 301 | 2.4155 | 2.2209 |
 
-## Team — The Leakage-Safe XI (entry 4770634)
+## Team — The Leakage-Safe XI
 
-The model's own squad in the official FPL game — [live team page](https://fantasy.premierleague.com/entry/4770634/history). Rewritten from the official API on every post-GW run. Rows remain marked live or review until FPL sets both `finished` and `data_checked`.
+The model's own squad in the official FPL game. Rewritten from the official API
+using a privately supplied entry identifier on every post-GW run. Public outputs
+omit that identifier. Rows remain marked live or review until FPL sets both
+`finished` and `data_checked`.
 
 | GW | pts | GW avg | vs avg | captain | overall rank | total pts |
 |---|---|---|---|---|---|---|

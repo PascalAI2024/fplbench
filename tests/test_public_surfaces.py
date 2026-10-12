@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -56,11 +57,34 @@ def _picks() -> dict:
     }
 
 
+def _progress(names: list[str]) -> dict:
+    return {
+        "gameweek": 6,
+        "forecast": {"rows": 667, "sha256": "37a81e7b5756" + "0" * 53},
+        "saved_team_observation": {
+            "status": "saved_and_read_back",
+            "starting_xi": names[:11],
+            "bench": names[11:15],
+            "captain": names[9],
+            "vice_captain": names[10],
+            "free_transfers_used": 2,
+            "points_cost": 0,
+            "chip_used": None,
+        },
+        "model_projection": {"gain_vs_hold": 4.592},
+    }
+
+
 def test_board_is_responsive_accessible_and_explicitly_provisional(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     bootstrap = _bootstrap()
     monkeypatch.setattr(build_board, "fetch_bootstrap", lambda: bootstrap)
+    monkeypatch.setattr(
+        build_board,
+        "load_latest_progress",
+        lambda: _progress([f"P{index}" for index in range(1, 16)]),
+    )
     monkeypatch.setattr(build_board, "fetch_picks", lambda _entry, _ctx: (1, _picks()))
     monkeypatch.setattr(
         build_board,
@@ -69,8 +93,8 @@ def test_board_is_responsive_accessible_and_explicitly_provisional(
     )
     monkeypatch.setattr(
         build_board,
-        "build_team_rows",
-        lambda: [
+        "parse_team_rows",
+        lambda _text: [
             {
                 "gw": 1,
                 "live": True,
@@ -89,30 +113,55 @@ def test_board_is_responsive_accessible_and_explicitly_provisional(
     assert '<main id="board">' in page
     assert "@media (max-width: 600px)" in page
     assert "width: 1280px" not in page
-    assert "GW1 under review" in page
-    assert "remain provisional" in page
+    assert "GW6 unscored forecast" in page
+    assert "actual points remain pending official verification" in page
+    assert "GW6 forecast progress" in page
+    assert "+4.592 points vs hold" in page
+    assert "Unscored; not actual points." in page
     assert 'role="img"' in page
     assert '<caption class="sr-only">' in page
     assert 'scope="col"' in page
     assert ':focus-visible' in page
     assert 'aria-live="polite"' not in page
     assert build_board.PORTFOLIO_URL in page
-    assert page.count("<a ") == 9
-    assert page.count('target="_blank" rel="noopener noreferrer"') == 8
+    assert page.count("<a ") == 7
+    assert page.count('target="_blank" rel="noopener noreferrer"') == 6
     assert 'href="teams/test/index.html"' in page
     for destination in (
         build_board.DATASET_URL,
         build_board.GITHUB_URL,
         build_board.RESULTS_URL,
-        build_board.TEAM_URL,
         build_board.PORTFOLIO_URL,
     ):
         assert f'href="{destination}"' in page
+    assert "/entry/" not in page
+    assert "entry_id" not in page.casefold()
     build_board.validate_page(page)
     with pytest.raises(ValueError, match="escape the Space iframe"):
         build_board.validate_page(
             page.replace(' target="_blank" rel="noopener noreferrer"', "", 1)
         )
+
+
+def test_public_progress_is_sanitized_and_bound_to_the_frozen_forecast(tmp_path: Path):
+    root = Path(__file__).resolve().parents[1]
+    path = root / "outputs" / "progress" / "gw6_2026-27.json"
+    progress = build_board.load_progress_record(path)
+    assert progress["forecast"]["rows"] == 667
+    assert progress["saved_team_observation"]["status"] == "saved_and_read_back"
+    assert progress["model_projection"]["gain_vs_hold"] == 4.592
+    assert progress["actual_outcome"]["points"] is None
+
+    public_text = path.read_text(encoding="utf-8").casefold()
+    for forbidden in ("entry_id", "source_thread_id", "/users/", "receipt", "token"):
+        assert forbidden not in public_text
+
+    tampered = json.loads(path.read_text(encoding="utf-8"))
+    tampered["forecast"]["sha256"] = "0" * 64
+    tampered_path = tmp_path / "tampered.json"
+    tampered_path.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        build_board.load_progress_record(tampered_path)
 
 
 def test_site_builds_exact_index_plus_twenty_club_pages_with_no_broken_links(
@@ -137,6 +186,11 @@ def test_site_builds_exact_index_plus_twenty_club_pages_with_no_broken_links(
         for team_id in range(1, 21)
     ]
     monkeypatch.setattr(build_board, "fetch_bootstrap", lambda: bootstrap)
+    monkeypatch.setattr(
+        build_board,
+        "load_latest_progress",
+        lambda: _progress([f"Player {team_id:02d}" for team_id in range(1, 16)]),
+    )
     monkeypatch.setattr(build_board, "fetch_fixtures", lambda: [])
     monkeypatch.setattr(build_board, "fetch_picks", lambda _entry, _ctx: (1, _picks()))
     monkeypatch.setattr(
@@ -146,8 +200,8 @@ def test_site_builds_exact_index_plus_twenty_club_pages_with_no_broken_links(
     )
     monkeypatch.setattr(
         build_board,
-        "build_team_rows",
-        lambda: [
+        "parse_team_rows",
+        lambda _text: [
             {
                 "gw": 1,
                 "live": True,
@@ -249,6 +303,7 @@ def test_space_metadata_and_workflow_safety_contracts():
     assert "app_file: index.html" in build_board.SPACE_README
     assert "fullWidth: true" in build_board.SPACE_README
     assert "license: other" in build_board.SPACE_README
+    assert "unscored model\nprojections" in build_board.SPACE_README
     metadata = build_board.SPACE_README.split("---", 2)[1]
     short_description = next(
         line.split(":", 1)[1].strip().strip('"')
@@ -258,14 +313,26 @@ def test_space_metadata_and_workflow_safety_contracts():
     assert len(short_description) <= 60
     root = Path(__file__).resolve().parents[1]
     live = (root / ".github" / "workflows" / "fplbench.yml").read_text(encoding="utf-8")
+    assert "secrets.FPLBENCH_ENTRY_ID" in live
+    assert "preserving the existing sanitized team table" in live
     publish = (root / ".github" / "workflows" / "publish-public-surfaces.yml").read_text(
         encoding="utf-8"
     )
     assert "github.ref == 'refs/heads/main'" in live
     assert "!cancelled()" not in live
     assert "group: fplbench-live-${{ github.ref }}" in live
+    snapshot_step = live.index("Download live metadata snapshot")
+    history_step = live.index("Acquire official current-season histories")
+    predict_step = live.index("Predict from bound live inputs")
+    assert snapshot_step < history_step < predict_step
+    assert "download_live_history" in live
     assert "permissions:\n  contents: read" in publish
     assert "group: fplbench-hf-publication" in publish
+    quality = (root / ".github" / "workflows" / "quality.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "coinor-cbc" in quality
+    assert "coinor-cbc" in publish
     for prohibited in ("predict_live.py", "score_gw.py", "track_team.py"):
         assert prohibited not in publish
 
@@ -313,7 +380,7 @@ def test_team_rows_keep_review_state_provisional(monkeypatch: pytest.MonkeyPatch
         lambda url: bootstrap if url.endswith("bootstrap-static/") else history,
     )
     monkeypatch.setattr(track_team, "_captain", lambda *_args: "Captain")
-    rows = track_team.build_team_rows()
+    rows = track_team.build_team_rows(123)
     assert rows[0]["status"] == "review"
     assert rows[0]["live"] is True
     assert "1 (review)" in track_team.team_table_md(rows)

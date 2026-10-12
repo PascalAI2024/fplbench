@@ -3,7 +3,7 @@
 Two modes:
 
   # preview — public endpoints only, selling prices approximated by now_cost
-  python scripts/plan_transfers.py --preds outputs/predictions/gw4_2026-27.csv
+  python scripts/plan_transfers.py --preds outputs/predictions/gw4_2026-27.csv --entry <private-id>
 
   # live — authenticated my-team payload supplies real selling prices,
   # bank, and free-transfer count
@@ -30,7 +30,12 @@ if str(ROOT) not in sys.path:
 from fplbench.transfers import plan_with_baseline, sanity_check
 
 API = "https://fantasy.premierleague.com/api"
-DEFAULT_ENTRY = 4770634
+
+
+def configured_entry_id() -> int | None:
+    from scripts.track_team import configured_entry_id as read_entry_id
+
+    return read_entry_id()
 
 
 def _get_json(url: str) -> dict:
@@ -131,7 +136,12 @@ def format_plan(plan, board: pd.DataFrame, *, approximate: bool) -> str:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Weekly FPL transfer plan")
     p.add_argument("--preds", type=Path, required=True, help="predictions CSV")
-    p.add_argument("--entry", type=int, default=DEFAULT_ENTRY)
+    p.add_argument(
+        "--entry",
+        type=int,
+        default=configured_entry_id(),
+        help="private FPL entry id (or set FPLBENCH_ENTRY_ID)",
+    )
     p.add_argument(
         "--my-team",
         type=Path,
@@ -161,6 +171,8 @@ def main(argv: list[str] | None = None) -> int:
         owned, selling, bank, free = from_my_team(payload)
         approximate = False
     else:
+        if args.entry is None:
+            p.error("--entry or FPLBENCH_ENTRY_ID is required without --my-team")
         owned = owned_from_public(args.entry, current_event(args.entry))
         cost = board.set_index("id")["now_cost"].to_dict()
         selling = {i: int(cost[i]) for i in owned if i in cost}
