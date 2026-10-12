@@ -4,6 +4,130 @@ Updated September 18, 2026. Repo: `projects/fplbench/main` (moved here in the
 2026-09-07 workspace reorg, out of the retired `dev\fplbench`). Origin:
 https://github.com/PascalAI2024/fplbench.
 
+## October 10, 08:37 UTC: GW6 routine — team verified; fresh pipeline blocked
+
+The overnight remote release supersedes the stale model blockers below. Fetched
+origin/main without pulling: `a7e8376780c4196898f94653bc0b4ae290b3f94f`.
+GW6 committed forecast SHA256 `37a81e7b5756a8fd7e7c631abea3ef08128e0aaa967c15637a7b77abdd9cfca2`
+has 667 unique IDs, all finite e_points_final, only event 6, and all 15 owned players.
+Existing Chrome confirmed entry 4770634 and all 15 positions, Rogers captain,
+B.Fernandes vice, bench Pickford/Groß/Konsa/Aina, £0.2m bank, 0 free transfers,
+and no active chip. The existing overnight saved state matches the committed
+model progress receipt. No transfer, chip or lineup save was repeated.
+
+Authorized pre-deadline run 38038374950 FAILED at Live ingest + predict:
+`LiveHistoryError: missing history_manifest.json`. No prediction commit or
+publication occurred in this run. This routine is BLOCKED, not success/no-op.
+Required repair: supply and validate the current-season history manifest/data in
+the Actions runner before prediction. Prior Actions HF OAuth failure remains
+untested by this run because publication was never reached. No credentials changed.
+Run: https://github.com/PascalAI2024/fplbench/actions/runs/38038374950
+
+Public HF Space revision `162e8342cb9c1d4d5f05bb87f5607bd0feafe389` is RUNNING;
+root shows matching GW6 forecast hash and unscored saved-team observation.
+GitHub RESULTS and HF dataset card/board show completed GW1–5 results; GW5
+MAE 1.3062 vs baseline 1.1560 and team 52 vs average 48. No post-GW recovery
+needed, and no unfinished GW6 score published.
+
+Same automation rescheduled with supported automation_update for GW7 deadline
+2026-10-17 10:00 UTC: next run 08:30 UTC / 04:30 America/New_York (EDT).
+Read-only scheduler verification: ACTIVE, next_run_at 1792225800000.
+No duplicate routine or polling. Evidence: `.evidence/2026-10-10/gw6-routine-receipt.json`
+and `.evidence/2026-10-10/pre-deadline-run.json`.
+Shared continuation: `projects/fplbench/2026-09-18-deadline-routine.md`.
+Jarvis item: `fplbench-live-operations/fplbench-gw6-deadline-20261010`.
+Preserved prior dirty CURRENT_WORK.md; no local pull/reset/commit/push.
+
+## October 9, 19:46 UTC: current completion reconciliation
+
+Supersedes the earlier scheduler blocker below: an external supported update
+has corrected the same `fplbench-deadline-routine`. Actual local scheduler state
+is ACTIVE, next_run_at `1791621000000`, October 10 at 08:30 UTC / 04:30 EDT;
+updated_at `1791533815267`. No runs have occurred yet. The official Premier League
+GW6 essentials notice, published October 9, verifies the deadline at 11:00 BST
+on October 10 = 10:00 UTC. The saved schedule is exactly 90 minutes before it.
+Source: https://www.premierleague.com/en/news/4729192/everything-you-need-for-gameweek-6-of-fpl-with-the-latest-tips-and-advice
+No scheduler/config/database edits or duplicate automations were made by this
+reconciliation; the delegated automation tool still reports local-thread-only.
+
+GitHub was checked directly through the existing Windows gh CLI: main remains
+5f12c30b9ffdf69b008f3a5a833a9d42e6619a9d; the only remote branch is main; all-state
+PR list is empty. Last run remains failed 37840825721, only Build + publish failed.
+Therefore the cloud engine repair is not visible in the repository/PR/CI state.
+Cloud owner reported 163 tests passed, 1 skipped and independent review clear,
+but the exact repair artifact/test receipt is not present in this desktop task.
+No patch publication or previously denied 667-player collection was retried.
+No credential handling, new access, or team changes occurred.
+
+HF Space remains RUNNING at d37c4cb9497f557584779d8b370e1c2926463c2d, serving the
+Oct 8 snapshot with its under-review notice. Current public root matches the
+preserved artifact after removing only HF's injected runtime metadata. The prior
+receipt proves all 21 immutable/public pages matched. This completes snapshot
+publication recovery and now schedule timing correction; it does not complete
+model repair release, validated forecast refresh, or unattended HF Actions auth.
+Latest receipt:
+`C:/Users/pasca/Documents/Codex/2026-10-08/task-2/fplbench-status-reconciliation-2026-10-09.json`.
+
+## October 8: desktop auth/publication and routine verification
+
+Desktop HF CLI 1.27.0 is installed. Supported `hf auth whoami` refreshed the
+existing `oauth-x0me` login, returning `x0me`; current OAuth expiry is
+2026-11-07T21:11:24Z. Explicit target write access to `x0me/fplbench-board`
+passed. No token value was printed, and no credential was manually copied or
+reconfigured. GitHub Actions uses a separate `HF_TOKEN`, last updated
+2026-09-10T22:05:01Z; it still requires approval-gated replacement.
+
+Run 37840825721 failed only board publication with OAuth expiry after training,
+ingest/predict, and commit succeeded. Existing GW6 snapshot is source
+`5f12c30b9ffdf69b008f3a5a833a9d42e6619a9d` (667 unique IDs, finite predictions).
+A desktop publication recovery built that exact source in an isolated task
+workspace, then atomically published all 21 HTML pages at Space revision
+`d37c4cb9497f557584779d8b370e1c2926463c2d`. All 21 immutable readbacks and all
+21 public pages match the candidate (public pages except only HF's injected
+runtime metadata script). Every page explicitly identifies the Oct 8 snapshot
+and warns that current-player-history checks remain pending; this is NOT
+acceptance of the model repair and must not drive team changes. No training,
+package changes, GitHub workflow dispatch, or source-code edits were performed.
+
+The actual local scheduler DB says `fplbench-deadline-routine` ACTIVE but
+`next_run_at = 2026-10-10T04:30:00Z`, four hours earlier than the intended
+08:30 UTC / 04:30 America/New_York. `last_run_at` is null and no run history
+exists. The target thread 01a0b615-3f94-7753-96da-0eb9bd509080 DOES exist locally,
+is unarchived, and has a current local catalog entry; the cloud lookup's
+not-found result does not prove it is missing. Supported automation view/update
+was unavailable in this delegated caller context (local-thread-only error).
+No routine configuration or scheduler DB was changed. All three legacy FPLBench
+Windows tasks remain Disabled. Official GW6 deadline freshly verified as
+2026-10-10T10:00:00Z; GW7 is 2026-10-17T10:00:00Z.
+
+Authenticated Chrome FPL UI was read only: entry 4770634, The Leakage-Safe XI,
+GW6, 2 free transfers, bank GBP 0.2m, no current-GW transfers. Saved XI still
+starts injured Milenkovic (0% next-round chance, hamstring, expected back Oct 11)
+and newly doubtful Konsa (75%, unspecified injury). Captain B.Fernandes,
+vice Enzo, bench Kinsky/Aina/Diop/Gross. No transfers, substitutions, chips,
+hits, or team saves. FPL tab restored to its original my-team page; Upwork tabs
+and browser account context were untouched.
+
+Evidence and secure recovery helper:
+`C:/Users/pasca/Documents/Codex/2026-10-08/task-2/publication-receipt.json`,
+`fpl-authenticated-observations.json`, `routine-observations.json`, and
+`replace_hf_token_after_approval.py` in the same directory. The helper has NOT
+run. Exact remaining approvals/actions: replace only repo Actions HF_TOKEN
+with existing refreshed x0me credential via encrypted stdin after human approval;
+correct and read back the existing routine's scheduler time via supported local
+Codex automation controls; accept current-player-history engine repair before
+using a new forecast for the team. Shared vault-note access and an attempted
+parent progress message were rejected by automatic approval review; local
+findings are returned through the delegated final response.
+
+Latest scope clarification (21:25 UTC): leave GitHub HF_TOKEN unchanged; do not
+copy CLI credentials into GitHub secrets, generate grants, or change access.
+The earlier approval-gated helper is now explicitly disabled and was never run.
+Fresh target write-access check and public root readback still confirm x0me and
+Space revision d37c4cb; GitHub main is still 5f12c30. The routine scheduler and
+saved authenticated squad are unchanged. Updated read-only evidence:
+`C:/Users/pasca/Documents/Codex/2026-10-08/task-2/latest-access-publication-state.json`.
+
 ## Verified state
 
 ### September 25: bench order from simulated autosubs (branch `bench-subs`)
@@ -276,3 +400,31 @@ treat a failed Friday as a known loss.
   autoregressive signal. The one direction worth a spike is upstream: forecast
   team-level goals for/against as a multivariate series with the fixture list as
   a known-future covariate, and feed the output to LightGBM as a feature.
+
+### 2026-10-09 20:00 UTC desktop readback
+
+- Existing default Hugging Face authentication still identifies x0me; write access to x0me/fplbench-board verified. No credential value read into output, copied, or reconfigured. Space is RUNNING at d37c4cb9497f557584779d8b370e1c2926463c2d, with public root HTTP 200 matching the 21-page publication receipt and review notice preserved. Published forecast source remains 5f12c30b9ffdf69b008f3a5a833a9d42e6619a9d.
+- A new scheduled GitHub run 37983571521 started 2026-10-09 19:55:58 UTC, trained/ingested/predicted/committed successfully, then failed Build + publish Space board. Failed-log classification confirms OAuth expired without printing raw logs. HF_TOKEN metadata remains unchanged since 2026-09-10T22:05:01Z. Latest main is now 9d1733936fb07793067db6a8dd28a5f5f30b5f39 (19:57:33 UTC); compare with 5f12c30 shows only outputs/predictions/gw6_2026-27.csv changed. No repair code publication visible.
+- Existing deadline routine fplbench-deadline-routine was found externally corrected: ACTIVE, next_run_at 1791621000000 = 2026-10-10 08:30 UTC = 04:30 EDT, updated_at 1791533815267 = 2026-10-09 08:16:55.267 UTC. This desktop task made no successful scheduler update and no TOML/DB edits; actual external actor is unrecorded. This Saturday schedule does not fulfil today's Friday catch-up.
+- Exact Library metadata resolved: fplbench-20261008-reviewed-engine.zip, libfile_7a7e73d549d48191b59e18d11fb8fc7a, file_0000000050ac82308a8b251be4afca41, 2,320,051 bytes, created 2026-10-08T22:02:44.981817Z. No bytes materialized or local exact copy found. Historical /workspace/shared/fplbench-maintenance-20261008 no longer exists per parent. Contained patch SHA256 must match cfdcc7425ba6bf3e25d4e2ada3a117bb943151ecf9805df6fb8c19b2dee70948; ZIP hash is not assumed to equal patch hash. No denied route retried.
+- Fresh official PL news dated 9 October says Milenkovic will miss Crystal Palace (bruised bone), Konsa sustained injury on international duty (selection risk, not proven multi-week absence), and Haaland is fit for Anfield. Source: https://www.premierleague.com/en/news/4730320 . Milenkovic was starting in the last authenticated GW6 snapshot from 8 October. Fresh public GW5 picks match the 15 owned IDs, but public GW5 bench differs from the last authenticated GW6 bench; public history cannot establish today's saved GW6 lineup.
+- Current authenticated GW6 UI not reverified: CUA controls not exposed and Upwork builder owns interactive Chrome. No browser tabs/context touched, team changes, transfers, paid runs, chips/hits, credential changes, or engine edits. Friday lineup/bench/captain model review remains blocked pending a permitted exact repair copy, reviewed engine publication/data validation, and coordinated authenticated read-only browser access.
+- Evidence in C:\Users\pasca\Documents\Codex\2026-10-08\task-2: final-auth-publication-readback.json; latest-ci-failure-receipt.json; schedule-correction-attribution.json; repair-packet-availability.json; friday-team-review-final.json; publication-receipt.json.
+
+### 2026-10-09 23:31 UTC: ongoing management authority and GW6 decision packet
+
+Latest parent delegation carries Pascal's explicit ongoing FPLBench and actual-team management through end-of-year review: improve and evaluate the bench experiment and maximize score. No spend, paid competitions, credential/access changes or prior-denied download bypass. Existing deadline routine is retained; no duplicate schedule or regular polling was created.
+
+Parent's Mac normal-browser read at 23:20 UTC verified today's unchanged fifteen, Bruno captain/Enzo vice, Kinsky-Aina-Diop-Gross bench, 2 FT, GBP 0.2m bank, GBP 100.1m squad value and no active chip. This Windows task did not independently browse it. Mac is currently unauthorized and Windows normal Chrome controls unavailable; no team save occurred.
+
+Fresh official public bootstrap and GW6 fixtures were read at 23:25 UTC, limited saved evidence to the owned fifteen and a named candidate shortlist; no element-summary/history bulk collection. Milenkovic is 0% with knee injury/unknown return, Konsa 75%, Gross healthy with 450 minutes and 47 points. Hall GBP 5.3m, Saka GBP 9.6m; current clubs checked. PL Scout dated October 9 selects Saka captain/Haaland vice and highlights Gross, Hall and Tarkowski. Sources: https://www.premierleague.com/en/news/4730172 and https://www.premierleague.com/en/news/4730320 . Exact deadline 2026-10-10 10:00 UTC; existing stop-before-save cutoff 09:40 UTC.
+
+Actual existing automation TOML still requires 'Use the existing model planner for all decisions; no personal football judgment', positive-gain free moves only, zero points hit, no chips, actual rendered-UI selling prices, accepted matching forecast/publication, and authenticated reload verification. No policy or scheduler changes were made. Broader management authority is recorded without silently discarding these experiment constraints.
+
+Prepared candidate for the validated model to evaluate: Milenkovic (471) -> Lewis Hall (449), Bruno (426) -> Saka (12), using two verified FT at zero hit cost, no chip. Proposed 3-5-2: Pickford; Tarkowski/Hall/Diop; Saka(C)/Gross/Szoboszlai/Anderson/Enzo; Haaland(VC)/Evanilson. Provisional bench Kinsky/Konsa/Calvert-Lewin/Aina; executable bench must come from the existing autosub simulator. Squad 2/5/5/3, XI 1/3/5/2, fifteen unique players and maximum three per club verified. Current combined purchases GBP 14.9m; actual sale proceeds must be at least GBP 14.7m given GBP 0.2m bank. Indicative remaining bank GBP 2.6m uses Oct 8 displayed sale values (5.4 and 11.9), not fresh selling-price approval. Compare against Hall plus Barnes replacing Enzo, and the optimized zero-transfer baseline. No expected gain was invented and no candidate was represented as model-approved.
+
+GitHub rechecked at 23:28 UTC: only main at 9d1733936fb07793067db6a8dd28a5f5f30b5f39, no PRs; latest scheduled run 37983571521 remains failed. Latest commit modifies only GW6 prediction CSV, so reviewed engine repair remains absent remotely. No permitted exact repair bytes were available here and no denied download/materialization route was retried.
+
+Exact execution dependency: restore authorized normal Mac browser or normal Windows Chrome; clear the accepted-model/forecast gate through existing permitted routes; run existing planner with actual current UI selling prices and verify positive gain, zero hit, no chip; re-read saved squad/FT/prices/deadline; save only selected plan before 09:40 UTC, reload and verify every squad/position/captain/vice/bank change. Parent can coordinate Mac execution on reconnection under already delegated management authority. Year-end audit will retain frozen forecasts, actual results, bench/autosub outcomes, transfers, costs and failures separately from successful saves.
+
+Evidence in C:/Users/pasca/Documents/Codex/2026-10-08/task-2: gw6-management-decision-audit.json; gw6-fresh-official-metadata.json; gw6-latest-engine-publication-state.json. No FPL, browser, credential, engine-source or remote-repository writes occurred.
