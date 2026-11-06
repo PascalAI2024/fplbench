@@ -280,6 +280,7 @@ RESULTS.md          # verified GW model scores + provisional team rows
 outputs/models/     # joblibs + val_metrics.json
 outputs/predictions/
 docs/img/           # charts + social.png (pitch-board preview)
+docs/assets/        # composite social preview card
 docs/wow/           # GW1 pitch board
 ```
 

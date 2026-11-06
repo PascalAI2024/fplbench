@@ -1,0 +1,2 @@
+# Predictions are hashed byte-for-byte by outputs/progress/*.json; never let git rewrite them.
+outputs/predictions/*.csv -text
